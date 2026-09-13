@@ -44,6 +44,7 @@ console.log("");
 console.log(`operator:          ${w.operator.toBase58()} (${formatSol(await chain.balance(w.operator))})`);
 console.log(`pending operator:  ${w.pendingOperator.toBase58()}`);
 console.log(`recovery:          ${w.recovery.toBase58()} (${formatSol(await chain.balance(w.recovery))})`);
+console.log(`collection:        ${w.collection.toBase58()}`);
 console.log(`heartbeat:         ${when(w.lastOperatorAction)}, ${age(silence)} ago`);
 if (w.windDown) {
   const escheatAt = w.windDownAt + ESCHEAT_AFTER_S;

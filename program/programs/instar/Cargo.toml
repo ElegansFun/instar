@@ -22,6 +22,11 @@ short-timers = []
 
 [dependencies]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
+# Metaplex Core: every larva is a Core asset in the world's collection. The
+# `anchor` feature selects the anchor-lang 0.31 / solana-program 2.x build of
+# the client. 0.11.x is the last line whose companion crate (kaigan) targets
+# anchor-lang 0.31; 0.12 pairs with 0.32 and breaks `anchor idl build`.
+mpl-core = { version = "0.11.1", features = ["anchor"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))'] }

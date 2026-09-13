@@ -198,7 +198,7 @@ async function buildWorld() {
   // ---------- ops (declared before genesis: the drain queues into it) ----------
   let lastEpoch = journal.lastEpoch;
   const ops = new OpQueue({
-    chain, engine, store, gasReserve: GAS_RESERVE, log,
+    chain, engine, store, gasReserve: GAS_RESERVE, publicUrl: PUBLIC_URL, log,
     onEpochPosted: (epoch, op, sig) => {
       store.recordEpoch({ epoch, tick: op.tick, hash: op.hash, sig, population: op.population, maxGen: op.maxGen });
     },

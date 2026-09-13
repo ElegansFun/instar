@@ -303,6 +303,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       `<span>eaten</span><span>${fmt(eaten)}</span>` +
       `<span>genome</span><span>${mutated === 0 ? "identical to the census weights" : `${fmt(mutated)} of ${fmt(baseWeights.length)} weights differ from the census`}</span>` +
       (rec ? `<span>keeper</span><span>${rec.keeper ? addrLink(rec.keeper) + (session && rec.keeper === session.wallet ? " (you)" : "") : "none"}</span>` +
+        (rec.asset ? `<span>NFT</span><span>${addrLink(rec.asset)}</span>` : "") +
         `<span>vault</span><span>${sol(rec.vault)} SOL</span>` +
         `<span>status</span><span>${STATUS_NAME[rec.status]}${rec.pendingCull ? ", cull requested" : ""}</span>` +
         (Number(rec.salePrice) > 0 ? `<span>price</span><span>${price(rec.salePrice)} SOL</span>` : "")
@@ -461,7 +462,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     crosshair.style.display = on && dish.fp.mode === "locked" ? "block" : "none";
     hint.textContent = on
       ? (dish.fp.mode === "locked" ? "WASD to crawl \u00b7 mouse to look \u00b7 shift to hurry \u00b7 click to inspect \u00b7 esc to leave" : "WASD to crawl \u00b7 hold the mouse to look \u00b7 esc to leave")
-      : "drag to orbit \u00b7 wheel to zoom \u00b7 click a larva to inspect";
+      : "drag to orbit \u00b7 wheel to zoom \u00b7 click a larva to inspect \u00b7 double-click to follow it";
   };
 
   // ---------- journal poll ----------

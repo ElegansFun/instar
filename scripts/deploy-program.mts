@@ -35,6 +35,11 @@ const built = fs.existsSync(features) ? fs.readFileSync(features, "utf8").trim()
 if (built !== "default") {
   throw new Error(`the artifact on disk was built with features "${built}"; run npm run program:build to get the real-timer build`);
 }
+// The build script writes the marker last, so a .so that is newer than it was
+// produced by a cargo run the script did not make, with features it cannot vouch for.
+if (fs.statSync(so).mtimeMs > fs.statSync(features).mtimeMs) {
+  throw new Error("program/target/deploy/instar.so is newer than its features marker; run npm run program:build so the artifact is a build the script vouches for");
+}
 
 if (cluster !== "localnet") {
   const recovery = process.env.INSTAR_RECOVERY;

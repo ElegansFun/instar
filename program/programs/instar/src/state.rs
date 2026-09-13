@@ -49,6 +49,12 @@ pub const ABANDONED_AFTER: i64 = 90 * 86_400;
 pub const ESCHEAT_AFTER: i64 = 180 * 86_400;
 #[cfg(not(feature = "short-timers"))]
 pub const CULL_TIMEOUT: i64 = 7 * 86_400;
+/// A listing expires: the program cannot see a plain Core transfer, so a
+/// listing made by A, voided by the asset leaving A's hands, would come back
+/// to life the moment the asset returned to A, at a price A consented to for
+/// a larva that has since kept earning. After this long it has to be made again.
+#[cfg(not(feature = "short-timers"))]
+pub const LISTING_MAX_AGE: i64 = 30 * 86_400;
 
 #[cfg(feature = "short-timers")]
 pub const ABANDONED_AFTER: i64 = 4;
@@ -56,6 +62,8 @@ pub const ABANDONED_AFTER: i64 = 4;
 pub const ESCHEAT_AFTER: i64 = 4;
 #[cfg(feature = "short-timers")]
 pub const CULL_TIMEOUT: i64 = 3;
+#[cfg(feature = "short-timers")]
+pub const LISTING_MAX_AGE: i64 = 6;
 
 #[account]
 #[derive(InitSpace)]
@@ -65,6 +73,9 @@ pub struct World {
     /// Where an abandoned world's money goes. Fixed before the first lamport
     /// arrives; only a live operator may move it, never anyone in wind-down.
     pub recovery: Pubkey,
+    /// The Metaplex Core collection every larva's asset belongs to. The World
+    /// PDA is its update authority.
+    pub collection: Pubkey,
     pub next_id: u64,
     pub total_alive: u64,
     pub last_epoch: u64,
@@ -119,9 +130,15 @@ pub struct Creature {
     pub birth_tick: u64,
     pub death_tick: u64,
     pub genome_hash: [u8; 32],
-    /// Default pubkey while WILD or OFFERED. Kept after death as the record of
-    /// who held the larva last; a DEAD larva is not transferable in any case.
-    pub keeper: Pubkey,
+    /// The Metaplex Core asset that is this larva. Its `owner` is the keeper;
+    /// the World PDA holds it while WILD or OFFERED. Kept after the burn as the
+    /// record of which asset the larva was.
+    pub asset: Pubkey,
+    /// Who listed the larva for resale; default when it is not listed. A
+    /// listing is void once the asset has left that keeper's hands, and
+    /// expires LISTING_MAX_AGE after `listed_at`.
+    pub listed_by: Pubkey,
+    pub listed_at: i64,
     /// Lamports the larva has earned and holds, backed by the World account.
     pub vault: u64,
     /// OFFERED: the primary price. OWNED: the resale price, 0 = not listed.
@@ -139,8 +156,10 @@ impl Creature {
         matches!(self.status, STATUS_OFFERED | STATUS_OWNED | STATUS_WILD)
     }
 
-    pub fn has_keeper(&self) -> bool {
-        self.keeper != Pubkey::default()
+    pub fn clear_listing(&mut self) {
+        self.sale_price = 0;
+        self.listed_by = Pubkey::default();
+        self.listed_at = 0;
     }
 }
 

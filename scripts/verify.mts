@@ -15,13 +15,16 @@
 // Every flow asserts the exact lamport split from the contract and the
 // solvency invariant afterwards:
 //   world.lamports - rent >= metabolism + pool + sum(vault) + sum(credit)
+// and, since every larva is a Metaplex Core asset, what the asset says:
+// owner after every trade, the stale listing after a native transfer,
+// freeze on cull, burn on death.
 
 import * as fs from "fs";
 import * as path from "path";
 import assert from "assert";
 import { fileURLToPath } from "url";
-import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { Chain, ProgramError, STATUS, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
+import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Chain, MPL_CORE, ProgramError, STATUS, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
 import { hash32 } from "../services/world/engine.mts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,8 +67,9 @@ async function solvent(label: string) {
 }
 
 await ensureFunded(operator, 5n * SOL);
+const COLLECTION_URI = "http://localhost:8787/api/collection.json";
 if (!(await chain.worldExists())) {
-  const sig = await chain.initWorld(Keypair.generate().publicKey);
+  const sig = await chain.initWorld(Keypair.generate().publicKey, COLLECTION_URI);
   ok(`init_world ${sig.slice(0, 12)}`);
 } else if ((await chain.world()).nextId > 0) {
   console.error(
@@ -75,7 +79,18 @@ if (!(await chain.worldExists())) {
   process.exit(2);
 }
 const rentWorld = await chain.rentExempt((await chain.connection.getAccountInfo(chain.worldPda))!.data.length);
-console.log(`world ${chain.worldPda.toBase58()}  rent ${formatSol(rentWorld)} SOL`);
+const collection = (await chain.world()).collection;
+const collectionInfo = await chain.connection.getAccountInfo(collection);
+assert.ok(collectionInfo?.owner.equals(MPL_CORE), "the world's collection is a Core account");
+console.log(`world ${chain.worldPda.toBase58()}  rent ${formatSol(rentWorld)} SOL  collection ${collection.toBase58()}`);
+
+/// The asset behind a creature, which must exist while it lives.
+const assetOf = async (id: number) => {
+  const c = (await chain.creature(id))!;
+  const a = await chain.asset(c.asset);
+  assert.ok(a, `larva ${id}: asset ${c.asset.toBase58()} is missing`);
+  return a;
+};
 
 const alice = Keypair.generate(), bob = Keypair.generate();
 await ensureFunded(alice, 2n * SOL);
@@ -88,15 +103,24 @@ let w = await solvent("start");
 const id = w.nextId;
 const tick = 1000;
 const hashA = hash32(0x1111222233334444n);
-await chain.registerBirth(id, -1, 0, tick, hashA);
+const uriA = `http://localhost:8787/api/larva/${id}.json`;
+await chain.registerBirth(id, -1, 0, tick, hashA, uriA);
 let c = (await chain.creature(id))!;
 assert.equal(c.status, STATUS.WILD); assert.equal(c.parentId, -1); assert.equal(c.genomeHash.slice(-16), "1111222233334444");
 assert.equal((await chain.world()).nextId, id + 1);
 ok(`register_birth ${id} -> WILD, next_id ${id + 1}`);
 
+let a = await assetOf(id);
+assert.ok(a.owner.equals(chain.worldPda), "a wild larva's asset is owned by the World PDA");
+assert.ok(c.keeper.equals(chain.worldPda), "creature view joins the asset owner");
+assert.ok(a.collection?.equals(collection), "the asset is in the world's collection");
+assert.equal(a.name, `Instar #${id}`); assert.equal(a.uri, uriA); assert.equal(a.frozen, false);
+assert.deepEqual(a.attributes, { generation: "0", parent: "founder", birth_tick: String(tick), genome: c.genomeHash.slice(-16) });
+ok(`asset ${a.address.toBase58().slice(0, 8)}: World-owned, in the collection, "${a.name}", attributes match`);
+
 // The Creature PDA for a used id already exists, so Anchor's account init
 // refuses before the handler can say WrongId; either way it cannot land.
-await assert.rejects(chain.registerBirth(id, -1, 0, tick, hashA),
+await assert.rejects(chain.registerBirth(id, -1, 0, tick, hashA, uriA),
   (e: any) => e instanceof ProgramError && (e.name === "WrongId" || e.logs.some(l => /already in use/.test(l))));
 ok("register_birth with a used id is refused");
 
@@ -114,16 +138,17 @@ await A.buy(id, price);
 w = await solvent("buy");
 c = (await chain.creature(id))!;
 assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(alice.publicKey)); assert.equal(c.salePrice, 0n);
+assert.ok((await assetOf(id)).owner.equals(alice.publicKey), "buy moves the asset to the buyer");
 assert.equal(c.vault, bps(price, 6000n));
 assert.equal(w.metabolism - before.metabolism, bps(price, 1500n));
 // no parent: the parent's 10% goes to the pool alongside the pool's 15%
 assert.equal(w.pool - before.pool, bps(price, 1500n) + bps(price, 1000n));
 assert.equal(w.lamports - before.lamports, price);
-ok(`buy: 60% vault / 15% metabolism / 25% pool (no parent) — world +${formatSol(price)} SOL`);
+ok(`buy: 60% vault / 15% metabolism / 25% pool (no parent) — world +${formatSol(price)} SOL; asset owner is the buyer`);
 
 // ---- a child of an OWNED parent: 10% to the parent's vault ------------------
 const child = w.nextId;
-await chain.registerBirth(child, id, 1, tick + 10, hash32(0x5555n));
+await chain.registerBirth(child, id, 1, tick + 10, hash32(0x5555n), `http://localhost:8787/api/larva/${child}.json`);
 const price2 = SOL / 50n;
 await chain.openOffer(child, price2);
 before = await chain.world();
@@ -137,14 +162,30 @@ assert.equal(w.metabolism - before.metabolism, bps(price2, 1500n));
 ok("buy with OWNED parent: 10% to the parent's vault");
 
 // ---- list / unlist / resale --------------------------------------------------
+// A listing carries the time it was made; buy_listed refuses one older than
+// LISTING_MAX_AGE (30 days; 6 s under short-timers). The age refusal is only
+// reachable on a short-timers artifact, so it runs when the local build's
+// marker says so and the real-timer run asserts the timestamp alone.
+const FEATURES = path.join(ROOT, "program", "target", "deploy", "instar.features");
+const shortTimers = fs.existsSync(FEATURES) && fs.readFileSync(FEATURES, "utf8").trim() === "short-timers";
 const ask = SOL / 20n;
+const listedAtLo = Math.floor(Date.now() / 1000) - 120;
 await A.list(id, ask);
-assert.equal((await chain.creature(id))!.salePrice, ask);
+c = (await chain.creature(id))!;
+assert.equal(c.salePrice, ask); assert.ok(c.listedBy.equals(alice.publicKey));
+assert.ok(c.listedAt >= listedAtLo && c.listedAt <= listedAtLo + 240, `listed_at ${c.listedAt} is not now`);
 await A.unlist(id);
-assert.equal((await chain.creature(id))!.salePrice, 0n);
+c = (await chain.creature(id))!;
+assert.equal(c.salePrice, 0n); assert.ok(c.listedBy.equals(PublicKey.default)); assert.equal(c.listedAt, 0);
+if (shortTimers) {
+  await A.list(id, ask);
+  await new Promise(r => setTimeout(r, 7000));
+  await assert.rejects(B.buyListed(id, ask), (e: any) => e instanceof ProgramError && e.name === "NotForSale");
+  ok("a listing older than LISTING_MAX_AGE (short-timers: 6 s) -> NotForSale");
+}
 await A.list(id, ask);
-await assert.rejects(B.list(id, ask), (e: any) => e instanceof ProgramError && e.name === "NotKeeper");
-ok("list / unlist / list; a stranger cannot list -> NotKeeper");
+await assert.rejects(B.list(id, ask), (e: any) => e instanceof ProgramError && e.name === "NotOwner");
+ok(`list / unlist / list; listed_at set and cleared; a stranger cannot list -> NotOwner${shortTimers ? "" : " (listing-age refusal needs a short-timers build)"}`);
 
 before = await chain.world();
 const vaultBefore = (await chain.creature(id))!.vault;
@@ -152,17 +193,25 @@ await B.buyListed(id, ask);
 w = await solvent("buy_listed");
 c = (await chain.creature(id))!;
 assert.ok(c.keeper.equals(bob.publicKey)); assert.equal(c.salePrice, 0n); assert.equal(c.vault, vaultBefore);
+assert.ok((await assetOf(id)).owner.equals(bob.publicKey), "buy_listed moves the asset to the buyer");
 assert.equal(await chain.creditOf(alice.publicKey), bps(ask, 9000n));
 assert.equal(w.metabolism - before.metabolism, bps(ask, 500n));
 assert.equal(w.pool - before.pool, bps(ask, 500n));
-ok("buy_listed: 90% seller credit / 5% / 5%, keeper changes, vault travels");
+ok("buy_listed: 90% seller credit / 5% / 5%, asset owner changes, vault travels");
 
-// ---- transfer ----------------------------------------------------------------
+// ---- native transfer ---------------------------------------------------------
+// A keeper moves the NFT with a plain Core transfer, as any wallet would; the
+// program is not told. The listing they left behind is void, not cleared:
+// buy_listed checks the lister still owns the asset, and the new owner unlists.
 await B.list(id, ask);
-await B.transfer(id, alice.publicKey);
+await B.transferAsset(id, alice.publicKey);
 c = (await chain.creature(id))!;
-assert.ok(c.keeper.equals(alice.publicKey)); assert.equal(c.salePrice, 0n, "transfer clears the listing");
-ok("transfer: keeper changes, listing cleared");
+assert.ok(c.keeper.equals(alice.publicKey)); assert.ok((await assetOf(id)).owner.equals(alice.publicKey));
+assert.equal(c.salePrice, ask, "a native transfer leaves the listing on the record"); assert.ok(c.listedBy.equals(bob.publicKey));
+await assert.rejects(B.buyListed(id, ask), (e: any) => e instanceof ProgramError && e.name === "NotForSale");
+await A.unlist(id);
+assert.equal((await chain.creature(id))!.salePrice, 0n);
+ok("Core transfer: asset owner changes; the stale listing is void (buy_listed -> NotForSale); the new owner unlists");
 
 // ---- epoch -------------------------------------------------------------------
 // The world may already have posted epochs (verify runs beside a live world on
@@ -203,7 +252,10 @@ assert.equal(w.pool - before.pool, bps(estate, 1500n) + (estate - bps(estate, 40
 assert.equal((await chain.creditOf(alice.publicKey)) - keeperCreditBefore, bps(estate, 1000n));
 assert.equal(w.totalAlive, before.totalAlive - 1);
 await assert.rejects(chain.settleDeath(id, 1, tick + 3001, []), (e: any) => e instanceof ProgramError && e.name === "WrongStatus");
-ok("settle_death: 40% heir / 35% metabolism / 15% pool / 10% keeper credit; twice -> WrongStatus");
+assert.equal(await chain.asset(c.asset), null, "death burns the asset");
+assert.ok(!c.asset.equals(PublicKey.default), "the burned asset stays on the record");
+assert.ok(c.keeper.equals(PublicKey.default));
+ok("settle_death: 40% heir / 35% metabolism / 15% pool / 10% keeper credit; asset burned; twice -> WrongStatus");
 
 // ---- withdraw ----------------------------------------------------------------
 const owed = await chain.creditOf(alice.publicKey);
@@ -215,6 +267,88 @@ const got = (await chain.balance(alice.publicKey)) - balBefore;
 assert.ok(got >= owed - 10_000n && got <= owed, `withdraw moved ${got}, owed ${owed}`);
 await assert.rejects(A.withdraw(), (e: any) => e instanceof ProgramError && e.name === "NothingToWithdraw");
 ok(`withdraw: ${formatSol(owed)} SOL credit -> keeper; again -> NothingToWithdraw`);
+
+// ---- cull: freeze, then settle at 85% to the keeper ------------------------------
+await B.requestCull(child);
+c = (await chain.creature(child))!;
+assert.ok(c.pendingCull); assert.equal(c.salePrice, 0n);
+a = await assetOf(child);
+assert.equal(a.frozen, true, "a cull request freezes the asset");
+await assert.rejects(B.transferAsset(child, alice.publicKey), (e: any) => e instanceof ProgramError);
+assert.ok((await assetOf(child)).owner.equals(bob.publicKey), "a frozen asset cannot leave the dish");
+await assert.rejects(B.list(child, ask), (e: any) => e instanceof ProgramError && e.name === "WrongStatus");
+before = await chain.world();
+const cullEstate = c.vault;
+const bobCreditBefore = await chain.creditOf(bob.publicKey);
+await chain.settleDeath(child, 6, tick + 4000, []);
+w = await solvent("settle_death (cull)");
+c = (await chain.creature(child))!;
+assert.equal(c.status, STATUS.DEAD); assert.equal(c.vault, 0n);
+assert.equal((await chain.creditOf(bob.publicKey)) - bobCreditBefore, bps(cullEstate, 8500n));
+assert.equal(w.metabolism - before.metabolism, cullEstate - bps(cullEstate, 8500n));
+assert.equal(await chain.asset(c.asset), null, "the cull settlement burns the asset");
+ok("request_cull freezes the asset (transfer refused, list -> WrongStatus); settle_death(culled): 85% keeper credit, asset burned");
+
+// ---- an unsold larva dies: no keeper, no credit account ----------------------------
+const wild = w.nextId;
+await chain.registerBirth(wild, -1, 0, tick + 20, hash32(0x7777n), `http://localhost:8787/api/larva/${wild}.json`);
+const wildAsset = (await chain.creature(wild))!.asset;
+await chain.settleDeath(wild, 2, tick + 4100, []);
+w = await solvent("settle_death (wild)");
+assert.equal((await chain.creature(wild))!.status, STATUS.DEAD);
+assert.equal(await chain.asset(wildAsset), null);
+ok("settle_death of a WILD larva: no keeper credit passed, asset burned");
+
+// ---- the owner burns the asset natively, then the larva dies ------------------
+// Core lets an owner burn an unfrozen asset from any wallet; the program is
+// not told and the record stays OWNED. The death must still settle: no
+// keeper (the share goes to metabolism), no credit account passed, nothing
+// left to burn.
+const burnt = w.nextId;
+await chain.registerBirth(burnt, -1, 0, tick + 30, hash32(0x8888n), `http://localhost:8787/api/larva/${burnt}.json`);
+await chain.openOffer(burnt, price);
+await A.buy(burnt, price);
+const burntAsset = (await chain.creature(burnt))!.asset;
+await A.burnAsset(burnt);
+assert.equal(await chain.asset(burntAsset), null, "the owner's native burn leaves no asset");
+c = (await chain.creature(burnt))!;
+assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(PublicKey.default), "a burned asset has no owner to read");
+await assert.rejects(A.list(burnt, ask), (e: any) => e instanceof ProgramError && e.name === "WrongStatus");
+before = await chain.world();
+const burntEstate = c.vault;
+const aliceCreditBefore = await chain.creditOf(alice.publicKey);
+await chain.settleDeath(burnt, 3, tick + 4200, []);
+w = await solvent("settle_death (natively burned)");
+c = (await chain.creature(burnt))!;
+assert.equal(c.status, STATUS.DEAD); assert.equal(c.vault, 0n);
+assert.equal(w.metabolism - before.metabolism, burntEstate - bps(burntEstate, 1500n), "keeper and heir shares go to metabolism");
+assert.equal(w.pool - before.pool, bps(burntEstate, 1500n));
+assert.equal(await chain.creditOf(alice.publicKey), aliceCreditBefore, "no keeper credit for a burned asset");
+assert.equal(w.totalAlive, before.totalAlive - 1);
+ok("settle_death after the owner's native BurnV1: no keeper credit, 85% metabolism / 15% pool, record DEAD");
+
+// ---- a larva sent back to the dish natively is re-offered ---------------------
+// A keeper can transfer their asset to the World PDA from any wallet; the
+// record stays OWNED with nobody able to sign for it. open_offer takes it
+// back onto the market (the program checks the asset's owner is the World).
+const donated = w.nextId;
+await chain.registerBirth(donated, -1, 0, tick + 40, hash32(0x9999n), `http://localhost:8787/api/larva/${donated}.json`);
+await chain.openOffer(donated, price);
+await A.buy(donated, price);
+await A.list(donated, ask);
+await A.transferAsset(donated, chain.worldPda);
+c = (await chain.creature(donated))!;
+assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(chain.worldPda));
+await assert.rejects(B.buy(donated, price), (e: any) => e instanceof ProgramError && e.name === "NotForSale");
+await chain.openOffer(donated, price);
+c = (await chain.creature(donated))!;
+assert.equal(c.status, STATUS.OFFERED); assert.equal(c.salePrice, price);
+assert.ok(c.listedBy.equals(PublicKey.default)); assert.equal(c.listedAt, 0);
+await B.buy(donated, price);
+c = (await chain.creature(donated))!;
+assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(bob.publicKey));
+await assert.rejects(chain.openOffer(donated, price), (e: any) => e instanceof ProgramError && e.name === "WrongStatus");
+ok("a larva sent to the World PDA natively: buy -> NotForSale until open_offer re-offers it (listing cleared); then bought; re-offering a kept larva -> WrongStatus");
 
 // ---- fund + sendSol ----------------------------------------------------------
 before = await chain.world();

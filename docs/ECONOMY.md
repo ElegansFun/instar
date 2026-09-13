@@ -11,10 +11,16 @@ simulation of anything.
 
 ## Where a larva's worth lives
 
-Every larva has a **vault** inside the program, backed lamport for lamport by
-the World account. Its balance is that animal's accumulated worth: visible in
-the inspector, carried with it when it changes hands, and paid out when it
-dies.
+Every larva is a Metaplex Core NFT in the Instar collection; whoever owns the
+asset keeps the larva. It sits in the custodial wallet the world made for you,
+and you may move it to any wallet with a plain Core transfer. Every larva also
+has a **vault** inside the program, backed lamport for lamport by the World
+account. Its balance is that animal's accumulated worth: visible in the
+inspector, carried with the NFT when it changes hands, and paid out when it
+dies. The vault is paid to the owner of the asset at that moment, so list and
+keep larvae only in wallets you can sign with; an asset parked in a
+marketplace escrow at the moment of death forfeits the keeper's share to
+metabolism.
 
 A newborn is offered at `0.005 SOL + 0.001 SOL × generation` (founders at
 twice the base). Buying it splits the price:

@@ -12,9 +12,11 @@
 //! not opens them for everybody at the same moment.
 
 use anchor_lang::prelude::*;
+use mpl_core::accounts::BaseCollectionV1;
 
 use crate::errors::InstarError;
 use crate::money::{add, assert_solvent, free_lamports, pay_out, sub};
+use crate::nft::{Core, LarvaAsset, MplCore};
 use crate::state::*;
 
 #[derive(Accounts)]
@@ -46,41 +48,54 @@ pub struct ReclaimVault<'info> {
     #[account(mut, seeds = [WORLD_SEED], bump = world.bump)]
     pub world: Account<'info, World>,
     #[account(mut)]
-    pub keeper: Signer<'info>,
-    #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump, has_one = keeper @ InstarError::NotKeeper)]
+    pub owner: Signer<'info>,
+    #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
     pub creature: Account<'info, Creature>,
+    #[account(mut, address = creature.asset @ InstarError::AssetMismatch, constraint = asset.owner == owner.key() @ InstarError::NotOwner)]
+    pub asset: Account<'info, LarvaAsset>,
+    #[account(mut, address = world.collection @ InstarError::WrongCollection)]
+    pub collection: Account<'info, BaseCollectionV1>,
     #[account(
         init_if_needed,
-        payer = keeper,
+        payer = owner,
         space = Credit::SIZE,
-        seeds = [CREDIT_SEED, keeper.key().as_ref()],
+        seeds = [CREDIT_SEED, owner.key().as_ref()],
         bump,
     )]
     pub credit: Account<'info, Credit>,
+    pub mpl_core_program: Program<'info, MplCore>,
     pub system_program: Program<'info, System>,
 }
 
 /// Take your own larva's vault. Needs no operator and no service, only that
-/// the world has ended and the larva is yours.
+/// the world has ended and the asset is yours. The larva is DEAD afterwards
+/// and its asset burned; the rent comes back to you.
 pub fn reclaim_vault(ctx: Context<ReclaimVault>, _id: u64) -> Result<()> {
     let world = &mut ctx.accounts.world;
     require!(world.wind_down, InstarError::NotWindingDown);
     let c = &mut ctx.accounts.creature;
+    require!(c.status != STATUS_DEAD, InstarError::WrongStatus);
     let amount = c.vault;
     c.vault = 0;
-    c.sale_price = 0;
-    if c.status != STATUS_DEAD {
-        c.status = STATUS_DEAD;
-        world.total_alive = sub(world.total_alive, 1)?;
-    }
+    c.clear_listing();
+    c.status = STATUS_DEAD;
+    world.total_alive = sub(world.total_alive, 1)?;
     world.total_vaults = sub(world.total_vaults, amount)?;
     world.total_credit = add(world.total_credit, amount)?;
 
     let credit = &mut ctx.accounts.credit;
-    credit.owner = ctx.accounts.keeper.key();
+    credit.owner = ctx.accounts.owner.key();
     credit.bump = ctx.bumps.credit;
     credit.amount = add(credit.amount, amount)?;
-    assert_solvent(world)
+    assert_solvent(world)?;
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: ctx.accounts.collection.as_ref(),
+        payer: &ctx.accounts.owner,
+        system_program: &ctx.accounts.system_program,
+    }
+    .burn(ctx.accounts.asset.as_ref())
 }
 
 #[derive(Accounts)]

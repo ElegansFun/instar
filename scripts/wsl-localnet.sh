@@ -14,7 +14,10 @@ ROOT=/mnt/c/tech/connectomes
 PORT="${1:-8899}"
 URL="http://127.0.0.1:$PORT"
 SO="$ROOT/program/target/deploy/instar.so"
+CORE_SO="$ROOT/program/deps/mpl_core.so"
+CORE_ID=CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d
 test -f "$SO" || { echo "no $SO: run npm run program:build first" >&2; exit 1; }
+test -f "$CORE_SO" || { echo "no $CORE_SO: see program/deps/README.md" >&2; exit 1; }
 PROGRAM_ID="$(node -e "console.log(require('$ROOT/program/target/idl/instar.json').address)")"
 OPERATOR="$ROOT/.keys/operator.json"
 mkdir -p "$ROOT/.keys"
@@ -32,6 +35,8 @@ echo "rpc:      $URL"
 # The program is preloaded as an UPGRADEABLE program with the operator as
 # upgrade authority: init_world checks that its signer is that authority, and a
 # plain --bpf-program preload would set the authority to the default pubkey.
+# Metaplex Core (program/deps/mpl_core.so, dumped from mainnet) is preloaded
+# at its real address: every larva is a Core asset created by CPI.
 # gossip/faucet/dynamic ports are derived so two validators can coexist on one host.
 exec solana-test-validator --reset --quiet \
   --ledger "/root/instar-ledger-$PORT" \
@@ -39,4 +44,5 @@ exec solana-test-validator --reset --quiet \
   --gossip-port "$((PORT + 3000))" \
   --faucet-port "$((PORT + 1000))" \
   --dynamic-port-range "$((PORT + 2000))-$((PORT + 2099))" \
+  --bpf-program "$CORE_ID" "$CORE_SO" \
   --upgradeable-program "$PROGRAM_ID" "$SO" "$(solana-keygen pubkey "$OPERATOR")"

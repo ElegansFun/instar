@@ -3,9 +3,10 @@
 //!
 //! The simulation runs off-chain in a deterministic engine; nothing could run
 //! it here. What lives on chain is everything that has to be permanent and
-//! checkable: each larva's identity and ancestry, the lamports it earns, the
-//! market it trades in, and a state hash committed every epoch so anyone
-//! replaying the engine can verify the operator is not lying.
+//! checkable: each larva's identity and ancestry as a Metaplex Core asset in
+//! the world's collection, the lamports it earns, the market it trades in,
+//! and a state hash committed every epoch so anyone replaying the engine can
+//! verify the operator is not lying.
 //!
 //! Design rule: every balance this program holds has a withdrawal path that
 //! exists from deployment and does not depend on any off-chain process being
@@ -17,6 +18,7 @@ use anchor_lang::prelude::*;
 pub mod errors;
 pub mod instructions;
 pub mod money;
+pub mod nft;
 pub mod state;
 
 use instructions::*;
@@ -27,8 +29,8 @@ declare_id!("75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM");
 pub mod instar {
     use super::*;
 
-    pub fn init_world(ctx: Context<InitWorld>, recovery: Pubkey) -> Result<()> {
-        instructions::init_world(ctx, recovery)
+    pub fn init_world(ctx: Context<InitWorld>, recovery: Pubkey, collection_uri: String) -> Result<()> {
+        instructions::init_world(ctx, recovery, collection_uri)
     }
 
     pub fn set_recovery(ctx: Context<OperatorOnly>, new_recovery: Pubkey) -> Result<()> {
@@ -66,8 +68,9 @@ pub mod instar {
         generation: u32,
         birth_tick: u64,
         genome_hash: [u8; 32],
+        uri: String,
     ) -> Result<()> {
-        instructions::register_birth(ctx, id, parent_id, generation, birth_tick, genome_hash)
+        instructions::register_birth(ctx, id, parent_id, generation, birth_tick, genome_hash, uri)
     }
 
     pub fn open_offer(ctx: Context<OperatorOnCreature>, id: u64, price: u64) -> Result<()> {
@@ -88,7 +91,7 @@ pub mod instar {
         instructions::settle_death(ctx, id, cause, death_tick, heir_count)
     }
 
-    pub fn request_cull(ctx: Context<KeeperOnCreature>, id: u64) -> Result<()> {
+    pub fn request_cull(ctx: Context<OwnerOnCreature>, id: u64) -> Result<()> {
         instructions::request_cull(ctx, id)
     }
 
@@ -100,20 +103,16 @@ pub mod instar {
         instructions::buy(ctx, id, price)
     }
 
-    pub fn list(ctx: Context<KeeperListing>, id: u64, price: u64) -> Result<()> {
+    pub fn list(ctx: Context<Listing>, id: u64, price: u64) -> Result<()> {
         instructions::list(ctx, id, price)
     }
 
-    pub fn unlist(ctx: Context<KeeperListing>, id: u64) -> Result<()> {
+    pub fn unlist(ctx: Context<Listing>, id: u64) -> Result<()> {
         instructions::unlist(ctx, id)
     }
 
     pub fn buy_listed(ctx: Context<BuyListed>, id: u64, price: u64) -> Result<()> {
         instructions::buy_listed(ctx, id, price)
-    }
-
-    pub fn transfer(ctx: Context<Transfer>, id: u64, to: Pubkey) -> Result<()> {
-        instructions::transfer(ctx, id, to)
     }
 
     pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {

@@ -4,8 +4,8 @@ use anchor_lang::prelude::*;
 pub enum InstarError {
     #[msg("signer is not the world operator")]
     NotOperator,
-    #[msg("signer is not the larva's keeper")]
-    NotKeeper,
+    #[msg("signer is not the owner of the larva's asset")]
+    NotOwner,
     #[msg("the larva or the world is not in the status this action needs")]
     WrongStatus,
     #[msg("id is not the next in sequence, or the account passed is not the record it claims to be")]
@@ -30,4 +30,8 @@ pub enum InstarError {
     WindingDown,
     #[msg("recovery must be an address other than the operator")]
     RecoveryIsOperator,
+    #[msg("the asset account is not the larva's asset")]
+    AssetMismatch,
+    #[msg("the collection account is not the world's collection")]
+    WrongCollection,
 }

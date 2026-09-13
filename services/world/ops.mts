@@ -7,16 +7,17 @@
 // restart resumes it instead of skipping a larva id and wedging every birth
 // after it.
 
-import { Chain, ProgramError, formatSol } from "../chain/solana.mts";
+import { Chain, ProgramError, STATUS, STATUS_NAME, formatSol } from "../chain/solana.mts";
 import { Engine, hash32 } from "./engine.mts";
 import { JournalStore, type Op } from "./journal.mts";
 
 const DRAIN_MS = 400;
 const RATE_LIMIT_BACKOFF_MS = 60_000;
 const BALANCE_CHECK_MS = 60_000;
-/// The most a single settlement can cost: a birth pays Creature rent plus
-/// fees, a death may create a Credit account.
-const SETTLEMENT_FLOOR = 4_000_000n;
+/// The most a single settlement can cost: a birth pays Creature rent plus the
+/// Core asset's rent (about 0.003 SOL with four plugins) plus fees; a death
+/// may create a Credit account.
+const SETTLEMENT_FLOOR = 6_000_000n;
 const GAP_FILL_MAX = 32;
 
 export type OpQueueOpts = {
@@ -24,6 +25,8 @@ export type OpQueueOpts = {
   engine: Engine;
   store: JournalStore;
   gasReserve: bigint;
+  /// origin of the larva metadata a birth writes into its NFT
+  publicUrl: string;
   log: (line: string) => void;
   onEpochPosted: (epoch: number, op: Extract<Op, { op: "epoch" }>, sig: string | null) => void;
 };
@@ -43,12 +46,13 @@ export class OpQueue {
   private readonly engine: Engine;
   private readonly store: JournalStore;
   private readonly gasReserve: bigint;
+  private readonly publicUrl: string;
   private readonly log: (l: string) => void;
   private readonly onEpochPosted: OpQueueOpts["onEpochPosted"];
 
   constructor(o: OpQueueOpts) {
     this.chain = o.chain; this.engine = o.engine; this.store = o.store;
-    this.gasReserve = o.gasReserve; this.log = o.log; this.onEpochPosted = o.onEpochPosted;
+    this.gasReserve = o.gasReserve; this.publicUrl = o.publicUrl; this.log = o.log; this.onEpochPosted = o.onEpochPosted;
     this.ops = o.store.journal.ops;
   }
 
@@ -163,17 +167,20 @@ export class OpQueue {
   private async execute(op: Op) {
     const chain = this.chain, store = this.store;
     if (op.op === "birth") {
-      const sig = await chain.registerBirth(op.uid, op.parentUid, op.generation, op.tick, hash32(BigInt("0x" + op.genomeHash)));
+      const sig = await chain.registerBirth(op.uid, op.parentUid, op.generation, op.tick, hash32(BigInt("0x" + op.genomeHash)),
+        `${this.publicUrl}/api/larva/${op.uid}.json`);
       store.logTx("birth", sig, true, op.uid);
-      this.log(`larva ${op.uid} born on-chain (gen ${op.generation})`);
+      this.log(`larva ${op.uid} born on-chain (gen ${op.generation}, NFT minted)`);
     } else if (op.op === "offer") {
       const sig = await chain.openOffer(op.uid, BigInt(op.price));
       store.logTx("offer", sig, true, op.uid);
       this.log(`larva ${op.uid} offered at ${formatSol(BigInt(op.price))} SOL`);
     } else if (op.op === "death") {
+      // the keeper's share is credited to whoever owns the asset now; an
+      // unsold larva is the dish's own and passes no credit account
       const sig = await chain.settleDeath(op.uid, op.cause, op.tick, op.heirs);
       store.logTx("death", sig, true, op.uid);
-      this.log(`death settled: larva ${op.uid} (cause ${op.cause}, ${op.heirs.length} heirs)`);
+      this.log(`death settled: larva ${op.uid} (cause ${op.cause}, ${op.heirs.length} heirs, NFT burned)`);
     } else if (op.op === "reward") {
       // A reward that was sent and not confirmed may still land: the pool
       // pays twice if it is sent again, so nothing goes out until the first
@@ -291,9 +298,25 @@ export class OpQueue {
       } else this.log(`dropped an epoch sealed @${op.tick} — the chain is already past it`);
       return;
     }
+    if (op.op === "death" && name === "WrongStatus") {
+      // The program says the record is not in a state that can die. If the
+      // chain already holds it DEAD the settlement landed (or an earlier
+      // process settled it); anything else means the world and the record
+      // disagree about a living larva, and dropping the op would leave the
+      // record wrong forever, so the queue holds and says so.
+      const c = await this.chain.creature(op.uid);
+      if (c?.status === STATUS.DEAD) {
+        this.ops.shift(); this.save();
+        this.log(`death of larva ${op.uid} was already settled on chain — retired from the queue`);
+      } else {
+        this.log(`[instar] death of #${op.uid} refused with WrongStatus while the record is still alive on chain ` +
+          `(status ${c ? STATUS_NAME[c.status] : "missing"}, keeper ${c?.keeper.toBase58() ?? "-"}) — holding the queue: ${msg}`);
+      }
+      return;
+    }
     const terminal =
       (op.op === "offer" && (name === "WrongStatus" || name === "WrongId")) ||
-      (op.op === "death" && (name === "WrongStatus" || name === "WrongId")) ||
+      (op.op === "death" && name === "WrongId") ||
       (op.op === "reward" && name === "WrongStatus");
     if (terminal) {
       this.ops.shift(); this.save();

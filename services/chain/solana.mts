@@ -12,9 +12,11 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram,
-  LAMPORTS_PER_SOL, TransactionExpiredBlockheightExceededError, SendTransactionError,
+  LAMPORTS_PER_SOL, TransactionExpiredBlockheightExceededError, SendTransactionError, type AccountInfo,
 } from "@solana/web3.js";
 import { AnchorProvider, BN, Program, Wallet, type Idl } from "@coral-xyz/anchor";
+import { deserializeAssetV1 } from "@metaplex-foundation/mpl-core";
+import { publicKey as umiKey, lamports as umiLamports } from "@metaplex-foundation/umi";
 import type { Instar } from "./idl/instar.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +30,10 @@ export const PUBLIC_RPC: Record<Cluster, string> = {
   "mainnet-beta": "https://api.mainnet-beta.solana.com",
 };
 
+/// Metaplex Core: every larva is an Asset in the world's Collection, and the
+/// asset's owner is the only record of who keeps it.
+export const MPL_CORE = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+
 export const STATUS = { NONE: 0, OFFERED: 1, OWNED: 2, WILD: 3, DEAD: 4 } as const;
 export const STATUS_NAME: Record<number, string> = { 0: "none", 1: "offered", 2: "owned", 3: "wild", 4: "dead" };
 export const NO_PARENT_ID = 2n ** 64n - 1n;
@@ -36,16 +42,21 @@ export const TAKE_ALL = 2n ** 64n - 1n;
 export const SIGNATURE_FEE = 5000n;
 /// Compute-unit limits, from `simulateTransaction` of each instruction
 /// against the deployed program on localnet (2026-09): heartbeat and
-/// post_epoch 4k, register_birth 10.7k, fund 6.6k, reward_many 7.6k + 3k per
-/// creature, settle_death 38k with 8 heirs, a system transfer 150 (450 with
-/// the two compute-budget instructions). Each limit is at least 3x its
-/// measurement; the priority fee is priced on the limit, so a tight one is
-/// what keeps a "max" withdrawal exact.
+/// post_epoch 4k, fund 6.6k, reward_many 7.6k + 3k per creature, a system
+/// transfer 150 (450 with the two compute-budget instructions). The Core
+/// CPIs dominate the rest, measured from confirmed transactions on a scratch
+/// validator: register_birth (CreateV2 with four plugins) 55k, buy 28k and
+/// buy_listed 32k (TransferV1), request_cull (freeze) 27k, settle_death
+/// (BurnV1) 40k with one heir, init_world (CreateCollectionV2) 20k, a plain
+/// Core transfer 9k. Each limit is at least 3x its measurement; the priority
+/// fee is priced on the limit, so a tight one is what keeps a "max"
+/// withdrawal exact.
 export const CU = {
   TRANSFER: 1_000,
   IX: 50_000,
+  CORE: 200_000,
   REWARD_BASE: 25_000, REWARD_PER: 5_000,
-  DEATH_BASE: 50_000, DEATH_PER: 5_000,
+  DEATH_BASE: 150_000, DEATH_PER: 5_000,
 } as const;
 
 const SCALAR_SIZE: Record<string, number> = { bool: 1, u8: 1, i8: 1, u16: 2, i16: 2, u32: 4, i32: 4, u64: 8, i64: 8, pubkey: 32 };
@@ -64,16 +75,28 @@ export type FieldSpan = { offset: number; size: number };
 export type WorldLayout = { account: string; lastEpoch: FieldSpan; lastEpochTick: FieldSpan; lastStateHash: FieldSpan };
 
 export type WorldView = {
-  operator: PublicKey; pendingOperator: PublicKey; recovery: PublicKey;
+  operator: PublicKey; pendingOperator: PublicKey; recovery: PublicKey; collection: PublicKey;
   nextId: number; totalAlive: number; lastEpoch: number; lastEpochTick: number; lastStateHash: string;
   metabolism: bigint; pool: bigint; totalVaults: bigint; totalCredit: bigint;
   lastOperatorAction: number; windDown: boolean; windDownAt: number;
   lamports: bigint;
 };
 
+/// The Core asset as the chain holds it. `collection` is null only for an
+/// asset that is not in one, which no larva ever is.
+export type AssetView = {
+  address: PublicKey; owner: PublicKey; collection: PublicKey | null; name: string; uri: string;
+  frozen: boolean; attributes: Record<string, string>;
+};
+
+/// A Creature record joined with its asset: `keeper` is the asset's owner
+/// (the World PDA while the dish holds it, PublicKey.default once burned —
+/// by the program at death, or natively by its owner while it still lived).
+/// `listedAt` is the unix time of the current listing, 0 when unlisted.
 export type CreatureView = {
   id: number; parentId: number; generation: number; birthTick: number; deathTick: number; genomeHash: string;
-  keeper: PublicKey; vault: bigint; salePrice: bigint; status: number; pendingCull: boolean; cullRequestedAt: number;
+  asset: PublicKey; keeper: PublicKey; listedBy: PublicKey; listedAt: number;
+  vault: bigint; salePrice: bigint; status: number; pendingCull: boolean; cullRequestedAt: number;
 };
 
 export type ChainOpts = {
@@ -120,6 +143,46 @@ const big = (v: BN) => BigInt(v.toString());
 const num = (v: BN) => Number(v.toString());
 const hex = (bytes: number[]) => Buffer.from(bytes).toString("hex");
 
+/// Core `TransferV1` by the asset's owner: discriminator 14, no compression
+/// proof. Core's optional accounts are passed as the Core program id when
+/// absent (its SDK's convention), so `authority` is the program id and the
+/// payer signs as owner. The collection must be passed for an asset in one.
+function coreTransfer(asset: PublicKey, collection: PublicKey, owner: PublicKey, to: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MPL_CORE,
+    keys: [
+      { pubkey: asset, isSigner: false, isWritable: true },
+      { pubkey: collection, isSigner: false, isWritable: false },
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: MPL_CORE, isSigner: false, isWritable: false },
+      { pubkey: to, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: MPL_CORE, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([14, 0]),
+  });
+}
+
+/// Core `BurnV1` by the asset's owner: discriminator 12, no compression
+/// proof. Core approves the owner's own burn on an unfrozen asset and leaves
+/// a one-byte `Uninitialized` stub behind; the service never offers this,
+/// but a keeper can do it from any wallet, so the settle path is tested
+/// against it.
+function coreBurn(asset: PublicKey, collection: PublicKey, owner: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MPL_CORE,
+    keys: [
+      { pubkey: asset, isSigner: false, isWritable: true },
+      { pubkey: collection, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: MPL_CORE, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: MPL_CORE, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([12, 0]),
+  });
+}
+
 export class Chain {
   readonly cluster: Cluster;
   readonly rpcUrl: string;
@@ -134,6 +197,7 @@ export class Chain {
   /// Records that can never change again. Every path that sets DEAD is final,
   /// so once observed dead a creature is not fetched twice.
   private readonly dead = new Map<number, CreatureView>();
+  private collectionKey: PublicKey | null = null;
 
   constructor(opts: ChainOpts) {
     const idl = loadIdl();
@@ -192,8 +256,9 @@ export class Chain {
       this.program.account.world.fetch(this.worldPda),
       this.connection.getBalance(this.worldPda),
     ]);
+    this.collectionKey = w.collection;
     return {
-      operator: w.operator, pendingOperator: w.pendingOperator, recovery: w.recovery,
+      operator: w.operator, pendingOperator: w.pendingOperator, recovery: w.recovery, collection: w.collection,
       nextId: num(w.nextId), totalAlive: num(w.totalAlive), lastEpoch: num(w.lastEpoch), lastEpochTick: num(w.lastEpochTick),
       lastStateHash: hex(w.lastStateHash), metabolism: big(w.metabolism), pool: big(w.pool),
       totalVaults: big(w.totalVaults), totalCredit: big(w.totalCredit),
@@ -206,12 +271,46 @@ export class Chain {
     return (await this.connection.getAccountInfo(this.worldPda)) !== null;
   }
 
-  private view(c: any): CreatureView {
+  /// The world's Collection address. Fixed at init_world, so it is read once.
+  async collection(): Promise<PublicKey> {
+    if (!this.collectionKey) await this.world();
+    return this.collectionKey!;
+  }
+
+  /// Decode a Core asset account with the Metaplex SDK's own deserializer:
+  /// the base (owner, update authority, name, uri) and the plugin registry
+  /// behind it (frozen flag, attributes). Null for a burned asset: Core's
+  /// BurnV1 does not close the account, it shrinks it to a single
+  /// `Key::Uninitialized` byte and refunds the rent, so a burned larva's
+  /// address still answers, with nothing in it.
+  static decodeAsset(address: PublicKey, info: AccountInfo<Buffer>): AssetView | null {
+    if (!info.owner.equals(MPL_CORE)) throw new Error(`${address.toBase58()} is not a Core asset (owner ${info.owner.toBase58()})`);
+    if (info.data.length === 0 || info.data[0] === 0) return null;
+    const a = deserializeAssetV1({
+      publicKey: umiKey(address.toBase58()), owner: umiKey(MPL_CORE.toBase58()), executable: false,
+      lamports: umiLamports(info.lamports), rentEpoch: BigInt(info.rentEpoch ?? 0), data: new Uint8Array(info.data),
+    });
+    const attributes: Record<string, string> = {};
+    for (const { key, value } of a.attributes?.attributeList ?? []) attributes[key] = value;
+    return {
+      address, owner: new PublicKey(a.owner),
+      collection: a.updateAuthority.type === "Collection" && a.updateAuthority.address ? new PublicKey(a.updateAuthority.address) : null,
+      name: a.name, uri: a.uri, frozen: a.permanentFreezeDelegate?.frozen ?? false, attributes,
+    };
+  }
+
+  /// Null once the asset is burned (every death burns it).
+  async asset(address: PublicKey): Promise<AssetView | null> {
+    const info = await this.connection.getAccountInfo(address);
+    return info ? Chain.decodeAsset(address, info) : null;
+  }
+
+  private view(c: any, keeper: PublicKey): CreatureView {
     return {
       id: num(c.id), parentId: big(c.parentId) === NO_PARENT_ID ? -1 : num(c.parentId),
       generation: c.generation, birthTick: num(c.birthTick), deathTick: num(c.deathTick), genomeHash: hex(c.genomeHash),
-      keeper: c.keeper, vault: big(c.vault), salePrice: big(c.salePrice), status: c.status,
-      pendingCull: c.pendingCull, cullRequestedAt: num(c.cullRequestedAt),
+      asset: c.asset, keeper, listedBy: c.listedBy, listedAt: num(c.listedAt), vault: big(c.vault), salePrice: big(c.salePrice),
+      status: c.status, pendingCull: c.pendingCull, cullRequestedAt: num(c.cullRequestedAt),
     };
   }
 
@@ -220,14 +319,19 @@ export class Chain {
     if (frozen) return frozen;
     const c = await this.program.account.creature.fetchNullable(this.creaturePda(id));
     if (!c) return null;
-    const v = this.view(c);
-    if (v.status === STATUS.DEAD) this.dead.set(id, v);
-    return v;
+    if (c.status === STATUS.DEAD) {
+      const v = this.view(c, PublicKey.default);
+      this.dead.set(id, v);
+      return v;
+    }
+    const asset = await this.asset(c.asset);
+    return this.view(c, asset?.owner ?? PublicKey.default);
   }
 
-  /// Every creature in [from, to), in id order. Missing ids (never born) are
-  /// skipped. Dead records come from the cache so the sweep costs the living
-  /// population, not every larva that has ever existed.
+  /// Every creature in [from, to), in id order, each joined with its asset's
+  /// owner. Missing ids (never born) are skipped. Dead records come from the
+  /// cache so the sweep costs the living population, not every larva that
+  /// has ever existed.
   async creatures(range: { from: number; to: number }): Promise<CreatureView[]> {
     const out: CreatureView[] = [];
     const need: number[] = [];
@@ -236,14 +340,25 @@ export class Chain {
       if (frozen) out.push(frozen); else need.push(id);
     }
     const CHUNK = 100; // getMultipleAccounts limit
+    const living: any[] = [];
     for (let i = 0; i < need.length; i += CHUNK) {
       const ids = need.slice(i, i + CHUNK);
       const batch = await this.program.account.creature.fetchMultiple(ids.map(id => this.creaturePda(id)));
-      batch.forEach(c => {
-        if (!c) return;
-        const v = this.view(c);
-        if (v.status === STATUS.DEAD) this.dead.set(v.id, v);
-        out.push(v);
+      for (const c of batch) {
+        if (!c) continue;
+        if (c.status === STATUS.DEAD) {
+          const v = this.view(c, PublicKey.default);
+          this.dead.set(v.id, v);
+          out.push(v);
+        } else living.push(c);
+      }
+    }
+    for (let i = 0; i < living.length; i += CHUNK) {
+      const cs = living.slice(i, i + CHUNK);
+      const infos = await this.connection.getMultipleAccountsInfo(cs.map(c => c.asset));
+      cs.forEach((c, j) => {
+        const info = infos[j];
+        out.push(this.view(c, (info && Chain.decodeAsset(c.asset, info))?.owner ?? PublicKey.default));
       });
     }
     out.sort((a, b) => a.id - b.id);
@@ -388,15 +503,21 @@ export class Chain {
     return PublicKey.findProgramAddressSync([this.programId.toBuffer()], LOADER)[0];
   }
 
-  async initWorld(recovery: PublicKey): Promise<string> {
-    const ix = await this.program.methods.initWorld(recovery)
+  /// Creates the World and its Collection. Core needs a fresh signer for a
+  /// new collection address, so one is generated here and thrown away: the
+  /// World PDA is the collection's authority, the keypair is never used again.
+  async initWorld(recovery: PublicKey, collectionUri: string): Promise<string> {
+    const collection = Keypair.generate();
+    const ix = await this.program.methods.initWorld(recovery, collectionUri)
       .accountsPartial({
-        world: this.worldPda, operator: this.op.publicKey,
+        world: this.worldPda, operator: this.op.publicKey, collection: collection.publicKey,
         program: this.programId, programData: this.programDataPda(),
-        systemProgram: SystemProgram.programId,
+        mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
       })
       .instruction();
-    return this.send([ix], [this.op], () => this.worldExists());
+    const sig = await this.send([ix], [this.op, collection], () => this.worldExists(), CU.CORE);
+    this.collectionKey = collection.publicKey;
+    return sig;
   }
 
   /// Operator draw on the treasuries. `"all"` empties a pot; 0 leaves it alone.
@@ -416,20 +537,35 @@ export class Chain {
 
   /// A birth in the engine. `id` must be the world's next id or the program
   /// rejects it (WrongId), so the world and the chain can never disagree
-  /// about identity. `parentId` of -1 means a founder.
-  async registerBirth(id: number, parentId: number, generation: number, birthTick: number, genomeHash: number[]): Promise<string> {
+  /// about identity. `parentId` of -1 means a founder. The asset is a fresh
+  /// signer (Core's rule for a new address); the program records its key.
+  async registerBirth(id: number, parentId: number, generation: number, birthTick: number, genomeHash: number[], uri: string): Promise<string> {
     const parent = parentId < 0 ? NO_PARENT_ID : BigInt(parentId);
-    const ix = await this.program.methods.registerBirth(bn(id), bn(parent), generation, bn(birthTick), genomeHash)
-      .accountsPartial({ world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id), systemProgram: SystemProgram.programId })
+    const asset = Keypair.generate();
+    const ix = await this.program.methods.registerBirth(bn(id), bn(parent), generation, bn(birthTick), genomeHash, uri)
+      .accountsPartial({
+        world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id), asset: asset.publicKey,
+        collection: await this.collection(), mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
+      })
       .instruction();
-    return this.send([ix], [this.op], async () => (await this.creature(id)) !== null);
+    return this.send([ix], [this.op, asset], async () => (await this.creature(id)) !== null, CU.CORE);
   }
 
+  /// Offer a larva the dish holds: a WILD newborn, or an OWNED one whose
+  /// asset was sent back to the World PDA natively (the record cannot see
+  /// that transfer; the program checks the asset's owner). Landed once the
+  /// record has left "held by the dish, not offered": OFFERED, or already
+  /// bought (OWNED by a keeper).
   async openOffer(id: number, price: bigint): Promise<string> {
+    const c = await this.creature(id);
+    if (!c) throw new ProgramError("WrongId", [], `openOffer: larva ${id} was never registered`);
     const ix = await this.program.methods.openOffer(bn(id), bn(price))
-      .accountsPartial({ world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id) })
+      .accountsPartial({ world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id), asset: c.asset })
       .instruction();
-    return this.send([ix], [this.op], async () => (await this.creature(id))?.status !== STATUS.WILD);
+    return this.send([ix], [this.op], async () => {
+      const now = await this.creature(id);
+      return !!now && now.status !== STATUS.WILD && !(now.status === STATUS.OWNED && now.keeper.equals(this.worldPda));
+    });
   }
 
   /// A whole epoch's life rewards in one transaction: pool -> vaults. The
@@ -448,15 +584,23 @@ export class Chain {
     return this.send([ix], [this.op], async () => ((await this.creature(ids[0]))?.vault ?? 0n) >= expect, CU.REWARD_BASE + CU.REWARD_PER * ids.length);
   }
 
+  /// The keeper's 10% goes to whoever owns the asset when the death settles,
+  /// read here at send time; the program checks the credit PDA's seeds
+  /// against that owner. The dish itself (World PDA) has no credit, and
+  /// neither does a larva whose owner already burned the asset natively
+  /// (the account is a Core stub, `keeper` reads as PublicKey.default): the
+  /// program then routes the keeper share to metabolism and must be passed
+  /// no credit account at all.
   async settleDeath(id: number, cause: number, tick: number, heirs: number[]): Promise<string> {
     const c = await this.creature(id);
     if (!c) throw new ProgramError("WrongId", [], `settleDeath: larva ${id} was never registered`);
     if (c.status === STATUS.DEAD) throw new ProgramError("WrongStatus", [], `settleDeath: larva ${id} is already dead`);
-    const keeperCredit = c.keeper.equals(PublicKey.default) ? null : this.creditPda(c.keeper);
+    const noKeeper = c.keeper.equals(this.worldPda) || c.keeper.equals(PublicKey.default);
+    const keeperCredit = noKeeper ? null : this.creditPda(c.keeper);
     const ix = await this.program.methods.settleDeath(bn(id), cause, bn(tick), heirs.length)
       .accountsPartial({
-        world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id),
-        keeperCredit, systemProgram: SystemProgram.programId,
+        world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id), asset: c.asset,
+        collection: await this.collection(), keeperCredit, mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
       })
       .remainingAccounts(heirs.map(h => ({ pubkey: this.creaturePda(h), isWritable: true, isSigner: false })))
       .instruction();
@@ -489,57 +633,90 @@ export class Chain {
   /// Everything a keeper does, signed with their own key. The world never
   /// moves somebody's larva on their behalf: it holds the key so they need no
   /// wallet extension, but every trade is their transaction, from their
-  /// address, paying their own fees.
+  /// address, paying their own fees. Each call reads the Creature first for
+  /// its asset address; a larva that was never born is WrongId here, as it
+  /// would be from the program.
   asKeeper(keypair: Keypair) {
     const me = keypair.publicKey;
     const creature = (id: number) => this.creaturePda(id);
+    const rec = async (id: number) => {
+      const c = await this.creature(id);
+      if (!c) throw new ProgramError("WrongId", [], `no larva ${id}`);
+      return c;
+    };
+    const ownedBy = (id: number, who: PublicKey) => async () => (await this.creature(id))?.keeper.equals(who) ?? false;
     return {
       address: me,
       buy: async (id: number, price: bigint): Promise<string> => {
-        const c = await this.creature(id);
-        if (!c) throw new ProgramError("WrongId", [], `no larva ${id}`);
+        const c = await rec(id);
         const parent = c.parentId < 0 ? null : this.creaturePda(c.parentId);
         const ix = await this.program.methods.buy(bn(id), bn(price))
-          .accountsPartial({ world: this.worldPda, buyer: me, creature: creature(id), parent, systemProgram: SystemProgram.programId })
-          .instruction();
-        return this.send([ix], [keypair], async () => {
-          const now = await this.creature(id);
-          return !!now && now.status === STATUS.OWNED && now.keeper.equals(me);
-        });
-      },
-      buyListed: async (id: number, price: bigint): Promise<string> => {
-        const c = await this.creature(id);
-        if (!c) throw new ProgramError("WrongId", [], `no larva ${id}`);
-        const ix = await this.program.methods.buyListed(bn(id), bn(price))
           .accountsPartial({
-            world: this.worldPda, buyer: me, creature: creature(id),
-            sellerCredit: this.creditPda(c.keeper), systemProgram: SystemProgram.programId,
+            world: this.worldPda, buyer: me, creature: creature(id), parent, asset: c.asset,
+            collection: await this.collection(), mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
           })
           .instruction();
-        return this.send([ix], [keypair], async () => {
-          const now = await this.creature(id);
-          return !!now && now.keeper.equals(me);
-        });
+        return this.send([ix], [keypair], ownedBy(id, me), CU.CORE);
+      },
+      buyListed: async (id: number, price: bigint): Promise<string> => {
+        const c = await rec(id);
+        const ix = await this.program.methods.buyListed(bn(id), bn(price))
+          .accountsPartial({
+            world: this.worldPda, buyer: me, creature: creature(id), asset: c.asset, collection: await this.collection(),
+            sellerCredit: this.creditPda(c.listedBy), mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+        return this.send([ix], [keypair], ownedBy(id, me), CU.CORE);
       },
       list: async (id: number, price: bigint): Promise<string> => {
+        const c = await rec(id);
         const ix = await this.program.methods.list(bn(id), bn(price))
-          .accountsPartial({ keeper: me, creature: creature(id) }).instruction();
+          .accountsPartial({ signer: me, creature: creature(id), asset: c.asset }).instruction();
         return this.send([ix], [keypair], async () => (await this.creature(id))?.salePrice === price);
       },
       unlist: async (id: number): Promise<string> => {
+        const c = await rec(id);
         const ix = await this.program.methods.unlist(bn(id))
-          .accountsPartial({ keeper: me, creature: creature(id) }).instruction();
+          .accountsPartial({ signer: me, creature: creature(id), asset: c.asset }).instruction();
         return this.send([ix], [keypair], async () => (await this.creature(id))?.salePrice === 0n);
       },
-      transfer: async (id: number, to: PublicKey): Promise<string> => {
-        const ix = await this.program.methods.transfer(bn(id), to)
-          .accountsPartial({ keeper: me, creature: creature(id) }).instruction();
-        return this.send([ix], [keypair], async () => (await this.creature(id))?.keeper.equals(to) ?? false);
+      /// A plain Core transfer, as any wallet would do it: no program
+      /// instruction, the owner signs and pays. A listing left behind is
+      /// void (buy_listed checks the lister still owns the asset).
+      transferAsset: async (id: number, to: PublicKey): Promise<string> => {
+        const c = await rec(id);
+        const ix = coreTransfer(c.asset, await this.collection(), me, to);
+        return this.send([ix], [keypair], ownedBy(id, to), CU.CORE);
+      },
+      /// A plain Core burn, as any wallet would do it. The program is not
+      /// told; the creature stays alive on the record until the world settles
+      /// its death, which then finds no keeper and nothing to burn.
+      burnAsset: async (id: number): Promise<string> => {
+        const c = await rec(id);
+        const ix = coreBurn(c.asset, await this.collection(), me);
+        return this.send([ix], [keypair], async () => (await this.asset(c.asset)) === null, CU.CORE);
       },
       requestCull: async (id: number): Promise<string> => {
+        const c = await rec(id);
         const ix = await this.program.methods.requestCull(bn(id))
-          .accountsPartial({ world: this.worldPda, keeper: me, creature: creature(id) }).instruction();
-        return this.send([ix], [keypair], async () => (await this.creature(id))?.pendingCull ?? false);
+          .accountsPartial({
+            world: this.worldPda, owner: me, creature: creature(id), asset: c.asset,
+            collection: await this.collection(), mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+        return this.send([ix], [keypair], async () => (await this.creature(id))?.pendingCull ?? false, CU.CORE);
+      },
+      /// Wind-down exit: the vault becomes the owner's credit and the asset
+      /// is burned.
+      reclaimVault: async (id: number): Promise<string> => {
+        const c = await rec(id);
+        const ix = await this.program.methods.reclaimVault(bn(id))
+          .accountsPartial({
+            world: this.worldPda, owner: me, creature: creature(id), asset: c.asset, collection: await this.collection(),
+            credit: this.creditPda(me), mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+        return this.send([ix], [keypair], async () => (await this.creature(id))?.status === STATUS.DEAD, CU.CORE);
       },
       withdraw: async (): Promise<string> => {
         const ix = await this.program.methods.withdraw()

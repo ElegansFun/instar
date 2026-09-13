@@ -10,8 +10,9 @@ published synapse counts as the starting weights, is the animal's genome. Its
 olfactory neurons smell the yeast ahead of it; its descending neurons drive its
 crawl and its pharynx; its ring-gland cells gate when it can breed. It hatches,
 eats, molts, breeds and dies, and each of those is a record on Solana. The
-larva is the asset: buying one mints its record, resale moves it, death burns
-it.
+larva is the asset: every larva is a Metaplex Core NFT in the Instar
+collection. Buying one puts it in your wallet, resale moves it, death burns
+it, and the vault of SOL it earned travels with it.
 
 ## What is actually real
 

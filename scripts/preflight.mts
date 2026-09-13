@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { Chain, PUBLIC_RPC, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
+import { Chain, MPL_CORE, PUBLIC_RPC, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cluster = (process.env.INSTAR_CLUSTER ?? "localnet") as Cluster;
@@ -34,6 +34,11 @@ else {
   if (features === "default") ok(`artifact is the real-timer build (${(fs.statSync(so).size / 1024).toFixed(0)} KB)`);
   else bad(`artifact was built with features "${features}"; npm run program:build`);
 }
+// The suite and localnet validators preload Core from this dump; without it
+// no larva can be minted off a public cluster.
+const coreSo = path.join(root, "program/deps/mpl_core.so");
+if (fs.existsSync(coreSo)) ok(`program/deps/mpl_core.so (${(fs.statSync(coreSo).size / 1024).toFixed(0)} KB) for local validators`);
+else bad("program/deps/mpl_core.so missing: solana program dump -u m CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d program/deps/mpl_core.so");
 
 // ---- the program identity ----------------------------------------------------
 const lib = fs.readFileSync(path.join(root, "program/programs/instar/src/lib.rs"), "utf8");
@@ -90,6 +95,12 @@ try {
   if (known[cluster] && hash !== known[cluster]) bad(`rpc genesis hash ${hash} is not ${cluster}`);
   else ok(`genesis hash confirms ${cluster}`);
 
+  // Every larva is a Metaplex Core asset, so the Core program must be on the
+  // target cluster (it is, on devnet and mainnet; localnet preloads it).
+  const core = await chain.connection.getAccountInfo(MPL_CORE);
+  if (core?.executable) ok(`Metaplex Core is deployed at ${MPL_CORE.toBase58()}`);
+  else bad(`Metaplex Core (${MPL_CORE.toBase58()}) is not deployed on ${rpc}${cluster === "localnet" ? ": restart the validator with npm run localnet (it preloads program/deps/mpl_core.so)" : ""}`);
+
   if (deployer) {
     const bal = await chain.balance(deployer.publicKey);
     const rentForProgram = fs.existsSync(so) ? await chain.connection.getMinimumBalanceForRentExemption(fs.statSync(so).size * 2 + 45) : 0;
@@ -109,6 +120,9 @@ try {
       if (w.operator.equals(deployer.publicKey)) ok(`world exists; operator is this key`); else bad(`world exists but its operator is ${w.operator.toBase58()}`);
       if (recovery && !w.recovery.equals(recovery)) bad(`world recovery is ${w.recovery.toBase58()}, not INSTAR_RECOVERY`);
       else ok(`world recovery ${w.recovery.toBase58()}`);
+      const collection = await chain.connection.getAccountInfo(w.collection);
+      if (collection?.owner.equals(MPL_CORE)) ok(`world collection ${w.collection.toBase58()} is a Core account`);
+      else bad(`world collection ${w.collection.toBase58()} is ${collection ? "not a Core account" : "missing"}`);
       if (w.windDown) bad("world is winding down"); else ok(`world running: ${w.nextId} born, epoch ${w.lastEpoch}`);
     } else next("world not initialised yet: program:deploy does it, or npm run world:init");
   }

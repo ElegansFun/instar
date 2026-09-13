@@ -98,7 +98,7 @@ the world you deploy.
 
 ```
 INSTAR_CLUSTER=mainnet-beta INSTAR_DEPLOYER_KEYPAIR=.keys/mainnet/operator.json \
-INSTAR_RECOVERY=<recovery pubkey> npm run program:deploy
+INSTAR_RECOVERY=<recovery pubkey> PUBLIC_URL=https://your.domain npm run program:deploy
 ```
 
 One run: it deploys the real-timer artifact (the script refuses a short-timers
@@ -108,6 +108,12 @@ immediately calls `init_world` with that same key. Only the upgrade authority
 can create the World, so the deployer key is the operator; it may be handed to
 another key later with `transfer_operator` + `accept_operator`. The program
 refuses a recovery address equal to the operator.
+
+`init_world` also mints the world's Metaplex Core Collection, with
+`PUBLIC_URL/api/collection.json` as its metadata URI (override with
+`INSTAR_COLLECTION_URI`). The URI is fixed at creation and `init-world.mts`
+refuses a localhost one off localnet, so `PUBLIC_URL` must already be the
+real origin here, the same value the world process is started with.
 
 ### b. Read it back
 
@@ -131,7 +137,7 @@ volume (never bake them into the image):
 | `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container |
 | `INSTAR_MASTER_KEY` | 32 random bytes as hex; encrypts custodial wallets at rest. REQUIRED on mainnet-beta: the world refuses to start without it (on localnet/devnet it defaults to a key derived from the operator key, which would lock every keeper out if the operator key were rotated or lost). Keep it separately from the operator key |
 | `DATA_DIR` | a persistent volume (`/data`); journal, snapshot, accounts and sessions live here |
-| `PUBLIC_URL` | the public origin, used in larva metadata |
+| `PUBLIC_URL` | the public origin: written into every larva's NFT as its metadata URI at birth, and into the collection at `init_world` |
 | `INSTAR_GAS_RESERVE` | SOL the operator keeps for fees before it pauses settlement (default 0.05) |
 | `GOOGLE_CLIENT_ID` | optional; enables Google sign-in |
 | `INSTAR_FRESH` | `1` once, on the very first boot against this program; remove afterwards |

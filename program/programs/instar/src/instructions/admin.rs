@@ -6,6 +6,7 @@ use anchor_lang::prelude::*;
 
 use crate::errors::InstarError;
 use crate::money::{add, assert_solvent, deposit, pay_out, sub};
+use crate::nft::{Core, MplCore};
 use crate::state::*;
 
 /// Only the program's upgrade authority may create the World. The PDA is a
@@ -17,14 +18,19 @@ pub struct InitWorld<'info> {
     pub world: Account<'info, World>,
     #[account(mut)]
     pub operator: Signer<'info>,
+    /// The Core collection every larva will belong to: a fresh keypair the
+    /// client generates and signs for, as Core requires of a new account.
+    #[account(mut)]
+    pub collection: Signer<'info>,
     #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ InstarError::NotOperator)]
     pub program: Program<'info, crate::program::Instar>,
     #[account(constraint = program_data.upgrade_authority_address == Some(operator.key()) @ InstarError::NotOperator)]
     pub program_data: Account<'info, ProgramData>,
+    pub mpl_core_program: Program<'info, MplCore>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn init_world(ctx: Context<InitWorld>, recovery: Pubkey) -> Result<()> {
+pub fn init_world(ctx: Context<InitWorld>, recovery: Pubkey, collection_uri: String) -> Result<()> {
     let world = &mut ctx.accounts.world;
     let operator = ctx.accounts.operator.key();
     // Recovery is where an abandoned world's money goes when the operator key
@@ -34,8 +40,17 @@ pub fn init_world(ctx: Context<InitWorld>, recovery: Pubkey) -> Result<()> {
     world.operator = operator;
     world.pending_operator = Pubkey::default();
     world.recovery = recovery;
+    world.collection = ctx.accounts.collection.key();
     world.bump = ctx.bumps.world;
-    world.touch()
+    world.touch()?;
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: &ctx.accounts.collection,
+        payer: &ctx.accounts.operator,
+        system_program: &ctx.accounts.system_program,
+    }
+    .create_collection(collection_uri)
 }
 
 /// The shape shared by every operator-only instruction.

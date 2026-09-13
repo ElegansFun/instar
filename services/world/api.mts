@@ -64,8 +64,8 @@ const lamports = (v: bigint) => v.toString();
 
 function larvaJson(c: CreatureView) {
   return {
-    id: c.id, keeper: c.keeper.toBase58(), status: c.status, statusName: STATUS_NAME[c.status],
-    vault: lamports(c.vault), salePrice: lamports(c.salePrice), generation: c.generation,
+    id: c.id, asset: c.asset.toBase58(), keeper: c.keeper.toBase58(), status: c.status, statusName: STATUS_NAME[c.status],
+    vault: lamports(c.vault), salePrice: lamports(c.salePrice), listedAt: c.listedAt, generation: c.generation,
     parentId: c.parentId, pendingCull: c.pendingCull, birthTick: c.birthTick, deathTick: c.deathTick,
     genomeHash: c.genomeHash,
   };
@@ -252,10 +252,12 @@ export function createServer(ctx: WorldContext): http.Server {
         id = parseId(p.id); mine(id);
         kind = "unlist"; sig = await keeper.unlist(id);
       } else if (url === "/api/transfer") {
+        // a Core transfer signed by the custodial owner, exactly what a
+        // wallet would send; the program is not involved
         id = parseId(p.id); mine(id);
         const to = parsePubkey(p.to);
         if (to.equals(me)) throw new HttpError(400, "that is your own address");
-        kind = "transfer"; sig = await keeper.transfer(id, to);
+        kind = "transfer"; sig = await keeper.transferAsset(id, to);
       } else if (url === "/api/withdraw") {
         // two withdrawals share this button: pull what the program owes you,
         // then move SOL out of the custodial wallet
@@ -287,8 +289,8 @@ export function createServer(ctx: WorldContext): http.Server {
   function friendly(name: string) {
     return ({
       WrongStatus: "the larva is not in a state that allows this", NotForSale: "not for sale",
-      WrongPrice: "the price changed — look again", NotKeeper: "not yours", WrongId: "no such larva",
-      Insolvent: "the world cannot cover this right now", NothingToWithdraw: "nothing to withdraw",
+      WrongPrice: "the price changed — look again", NotOwner: "not yours", WrongId: "no such larva",
+      AssetMismatch: "that NFT is not this larva's", WrongCollection: "that NFT is not from this world",
       InsufficientFunds: "not enough SOL in your wallet to pay for this",
       WindingDown: "the world is winding down; no new life is sold or rewarded",
       RecoveryIsOperator: "the recovery address must not be the operator",
@@ -334,7 +336,8 @@ export function createServer(ctx: WorldContext): http.Server {
         if (route === "/api/config") {
           return json(200, {
             cluster: ctx.cluster, googleClientId: ctx.googleClientId, programId: ctx.chain.programId.toBase58(),
-            worldPda: ctx.chain.worldPda.toBase58(), explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
+            worldPda: ctx.chain.worldPda.toBase58(), collection: ctx.world()?.collection.toBase58() ?? null,
+            explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
             // The PUBLIC endpoint, never the configured one: that may carry a
             // provider key, and this payload is served to every visitor.
             rpc: PUBLIC_RPC[ctx.cluster],
@@ -342,6 +345,18 @@ export function createServer(ctx: WorldContext): http.Server {
             // where a mirror reads the epoch commitment in the raw World
             // account, so VERIFIED means the chain agrees, not this server
             world: ctx.chain.worldLayout,
+          });
+        }
+        if (route === "/api/collection.json") {
+          // the Collection asset's metadata: what wallets show for the set
+          res.setHeader("cache-control", "public, max-age=3600");
+          return json(200, {
+            name: "Instar", symbol: "INSTAR",
+            description: "Instar: a dish of Drosophila melanogaster first-instar larvae, each run on the Winding et al. 2023 larval connectome. " +
+              "Every larva is one asset in this collection; its owner is its keeper, and the asset is burned when it dies.",
+            image: `${ctx.publicUrl}/mark.svg`,
+            external_url: `${ctx.publicUrl}/`,
+            properties: { files: [{ uri: `${ctx.publicUrl}/mark.svg`, type: "image/svg+xml" }], category: "image" },
           });
         }
         if (route === "/api/state") {
@@ -382,18 +397,22 @@ export function createServer(ctx: WorldContext): http.Server {
             res.end(larvaSvg({ id, genomeHash, generation, status }));
             return;
           }
+          const image = `${ctx.publicUrl}/api/larva/${id}.svg`;
+          const parentId = c ? c.parentId : ctx.store.journal.parents[id] ?? -1;
           return json(200, {
-            name: `Instar larva ${id}`, symbol: "INSTAR",
+            name: `Instar #${id}`, symbol: "INSTAR",
             description: `A Drosophila melanogaster first-instar larva in the Instar world, driven by the Winding et al. 2023 larval connectome. Generation ${generation}. Status: ${status}.`,
-            image: `${ctx.publicUrl}/api/larva/${id}.svg`,
+            image,
             external_url: `${ctx.publicUrl}/dish.html#larva=${id}`,
             attributes: [
               { trait_type: "Generation", value: generation },
               { trait_type: "Status", value: status },
-              { trait_type: "Parent", value: c?.parentId ?? -1 },
+              { trait_type: "Parent", value: parentId >= 0 ? parentId : "founder" },
+              ...(c ? [{ trait_type: "Birth tick", value: c.birthTick }] : []),
               { trait_type: "Genome hash", value: genomeHash },
               { trait_type: "Species", value: "Drosophila melanogaster (L1)" },
             ],
+            properties: { files: [{ uri: image, type: "image/svg+xml" }], category: "image" },
           });
         }
         if (route.startsWith("/api/")) return json(404, { error: "no such route" });

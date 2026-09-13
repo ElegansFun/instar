@@ -1,9 +1,11 @@
 //! Birth, epoch rewards, death and cull settlement: the operator's crank.
 
 use anchor_lang::prelude::*;
+use mpl_core::accounts::BaseCollectionV1;
 
 use crate::errors::InstarError;
 use crate::money::{add, assert_solvent, bps, sub};
+use crate::nft::{live_owner, settled_owner, Core, LarvaAsset, MplCore};
 use crate::state::*;
 
 /// A creature passed through `remaining_accounts`: owner and discriminator are
@@ -29,12 +31,20 @@ pub struct RegisterBirth<'info> {
     pub operator: Signer<'info>,
     #[account(init, payer = operator, space = Creature::SIZE, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump)]
     pub creature: Account<'info, Creature>,
+    /// The larva's Core asset: a fresh keypair the client signs for.
+    #[account(mut)]
+    pub asset: Signer<'info>,
+    #[account(mut, address = world.collection @ InstarError::WrongCollection)]
+    pub collection: Account<'info, BaseCollectionV1>,
+    pub mpl_core_program: Program<'info, MplCore>,
     pub system_program: Program<'info, System>,
 }
 
 /// A birth in the engine becomes a permanent identity here. The engine names
 /// its larvae, not the program: the id is passed in and must be the next one,
-/// so the journal and the chain can never disagree about who #7 is.
+/// so the journal and the chain can never disagree about who #7 is. The
+/// asset is minted to the World PDA: the dish holds larvae nobody has bought.
+#[allow(clippy::too_many_arguments)]
 pub fn register_birth(
     ctx: Context<RegisterBirth>,
     id: u64,
@@ -42,6 +52,7 @@ pub fn register_birth(
     generation: u32,
     birth_tick: u64,
     genome_hash: [u8; 32],
+    uri: String,
 ) -> Result<()> {
     let world = &mut ctx.accounts.world;
     require!(!world.wind_down, InstarError::WindingDown);
@@ -56,9 +67,18 @@ pub fn register_birth(
     c.generation = generation;
     c.birth_tick = birth_tick;
     c.genome_hash = genome_hash;
+    c.asset = ctx.accounts.asset.key();
     c.status = STATUS_WILD;
     c.bump = ctx.bumps.creature;
-    Ok(())
+
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: ctx.accounts.collection.as_ref(),
+        payer: &ctx.accounts.operator,
+        system_program: &ctx.accounts.system_program,
+    }
+    .create_asset(&ctx.accounts.asset, id, parent_id, generation, birth_tick, &genome_hash, uri)
 }
 
 #[derive(Accounts)]
@@ -69,14 +89,21 @@ pub struct OperatorOnCreature<'info> {
     pub operator: Signer<'info>,
     #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
     pub creature: Account<'info, Creature>,
+    #[account(address = creature.asset @ InstarError::AssetMismatch)]
+    pub asset: Account<'info, LarvaAsset>,
 }
 
-/// Put a newborn up for sale at a fixed price.
+/// Put a larva the dish holds up for sale at a fixed price: a newborn, or a
+/// kept larva whose keeper sent the asset back to the World PDA with a plain
+/// Core transfer. Either way the asset must be the World PDA's; a larva in a
+/// keeper's hands is sold by `list`, never by the operator.
 pub fn open_offer(ctx: Context<OperatorOnCreature>, _id: u64, price: u64) -> Result<()> {
     require!(!ctx.accounts.world.wind_down, InstarError::WindingDown);
     let c = &mut ctx.accounts.creature;
-    require!(c.status == STATUS_WILD, InstarError::WrongStatus);
+    require!(c.status == STATUS_WILD || c.status == STATUS_OWNED, InstarError::WrongStatus);
+    require_keys_eq!(ctx.accounts.asset.owner, ctx.accounts.world.key(), InstarError::WrongStatus);
     c.status = STATUS_OFFERED;
+    c.clear_listing();
     c.sale_price = price;
     ctx.accounts.world.touch()
 }
@@ -124,22 +151,38 @@ pub struct SettleDeath<'info> {
     pub operator: Signer<'info>,
     #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
     pub creature: Account<'info, Creature>,
-    /// Present whenever the larva has a keeper; a WILD or OFFERED larva has
-    /// nobody to pay and passes none.
+    /// CHECK: `creature.asset`, still owned by Core. A keeper can burn their
+    /// own unfrozen asset natively, and Core leaves a one-byte stub; the death
+    /// is settled all the same, so the stub is read by hand (`settled_owner`)
+    /// rather than refused at load.
+    #[account(mut, address = creature.asset @ InstarError::AssetMismatch, owner = mpl_core::ID @ InstarError::AssetMismatch)]
+    pub asset: UncheckedAccount<'info>,
+    #[account(mut, address = world.collection @ InstarError::WrongCollection)]
+    pub collection: Account<'info, BaseCollectionV1>,
+    /// The credit of whoever owns the asset at settlement. Present whenever
+    /// the larva has a keeper; a WILD or OFFERED larva is the World PDA's own
+    /// and passes none, as does a larva whose keeper burned the asset. The
+    /// seed is spelled as an indexed byte array so the IDL builder, which can
+    /// only describe constants, arguments and account fields, leaves the PDA
+    /// undescribed instead of emitting the expression into the IDL.
     #[account(
         init_if_needed,
         payer = operator,
         space = Credit::SIZE,
-        seeds = [CREDIT_SEED, creature.keeper.as_ref()],
+        seeds = [CREDIT_SEED, &live_owner(&asset)?.to_bytes()[..]],
         bump,
     )]
     pub keeper_credit: Option<Account<'info, Credit>>,
+    pub mpl_core_program: Program<'info, MplCore>,
     pub system_program: Program<'info, System>,
 }
 
 /// Settle a death. Cause 6 with a pending cull is the keeper's own request and
 /// pays them most of the vault; anything else is the world taking its course
-/// and the estate is split between heirs, treasuries and keeper.
+/// and the estate is split between heirs, treasuries and keeper. The keeper
+/// is whoever owns the asset now; the asset is burned at the end. A keeper
+/// who already burned it natively forfeited the keeper share, which goes to
+/// metabolism as for a larva nobody kept.
 pub fn settle_death<'info>(
     ctx: Context<'_, '_, 'info, 'info, SettleDeath<'info>>,
     id: u64,
@@ -151,10 +194,11 @@ pub fn settle_death<'info>(
     require!(ctx.remaining_accounts.len() >= heir_count, InstarError::WrongId);
     let c = &mut ctx.accounts.creature;
     require!(c.status != STATUS_DEAD, InstarError::WrongStatus);
-    let had_keeper = c.has_keeper();
+    let owner = settled_owner(&ctx.accounts.asset)?;
+    let keeper = owner.filter(|owner| *owner != ctx.accounts.world.key());
     let estate = c.vault;
     c.vault = 0;
-    c.sale_price = 0;
+    c.clear_listing();
     c.status = STATUS_DEAD;
     c.death_tick = death_tick;
 
@@ -194,9 +238,9 @@ pub fn settle_death<'info>(
     }
 
     if to_keeper > 0 {
-        if had_keeper {
-            let credit = ctx.accounts.keeper_credit.as_mut().ok_or_else(|| error!(InstarError::NotKeeper))?;
-            credit.owner = c.keeper;
+        if let Some(keeper) = keeper {
+            let credit = ctx.accounts.keeper_credit.as_mut().ok_or_else(|| error!(InstarError::WrongId))?;
+            credit.owner = keeper;
             credit.bump = ctx.bumps.keeper_credit.unwrap_or(credit.bump);
             credit.amount = add(credit.amount, to_keeper)?;
             world.total_credit = add(world.total_credit, to_keeper)?;
@@ -205,29 +249,56 @@ pub fn settle_death<'info>(
         }
     }
     world.touch()?;
-    assert_solvent(world)
+    assert_solvent(world)?;
+    if owner.is_none() {
+        return Ok(());
+    }
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: ctx.accounts.collection.as_ref(),
+        payer: &ctx.accounts.operator,
+        system_program: &ctx.accounts.system_program,
+    }
+    .burn(&ctx.accounts.asset)
 }
 
 #[derive(Accounts)]
 #[instruction(id: u64)]
-pub struct KeeperOnCreature<'info> {
+pub struct OwnerOnCreature<'info> {
     #[account(mut, seeds = [WORLD_SEED], bump = world.bump)]
     pub world: Account<'info, World>,
-    pub keeper: Signer<'info>,
-    #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump, has_one = keeper @ InstarError::NotKeeper)]
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
     pub creature: Account<'info, Creature>,
+    #[account(mut, address = creature.asset @ InstarError::AssetMismatch, constraint = asset.owner == owner.key() @ InstarError::NotOwner)]
+    pub asset: Account<'info, LarvaAsset>,
+    #[account(mut, address = world.collection @ InstarError::WrongCollection)]
+    pub collection: Account<'info, BaseCollectionV1>,
+    pub mpl_core_program: Program<'info, MplCore>,
+    pub system_program: Program<'info, System>,
 }
 
 /// The keeper asks for the larva to be culled. The engine kills it at a
 /// deterministic tick and the operator settles it; if the operator never
-/// comes, `force_settle_cull` after CULL_TIMEOUT.
-pub fn request_cull(ctx: Context<KeeperOnCreature>, _id: u64) -> Result<()> {
+/// comes, `force_settle_cull` after CULL_TIMEOUT. The asset is frozen so it
+/// cannot leave the dish in the meantime; the settlement burns it.
+pub fn request_cull(ctx: Context<OwnerOnCreature>, _id: u64) -> Result<()> {
     let c = &mut ctx.accounts.creature;
     require!(c.status == STATUS_OWNED, InstarError::WrongStatus);
+    require!(!c.pending_cull, InstarError::WrongStatus);
     c.pending_cull = true;
     c.cull_requested_at = Clock::get()?.unix_timestamp;
-    c.sale_price = 0;
-    Ok(())
+    c.clear_listing();
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: ctx.accounts.collection.as_ref(),
+        payer: &ctx.accounts.owner,
+        system_program: &ctx.accounts.system_program,
+    }
+    .freeze(ctx.accounts.asset.as_ref())
 }
 
 #[derive(Accounts)]
@@ -240,19 +311,25 @@ pub struct ForceSettleCull<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
     pub creature: Account<'info, Creature>,
+    #[account(mut, address = creature.asset @ InstarError::AssetMismatch)]
+    pub asset: Account<'info, LarvaAsset>,
+    #[account(mut, address = world.collection @ InstarError::WrongCollection)]
+    pub collection: Account<'info, BaseCollectionV1>,
     #[account(
         init_if_needed,
         payer = payer,
         space = Credit::SIZE,
-        seeds = [CREDIT_SEED, creature.keeper.as_ref()],
+        seeds = [CREDIT_SEED, asset.owner.as_ref()],
         bump,
     )]
     pub keeper_credit: Account<'info, Credit>,
+    pub mpl_core_program: Program<'info, MplCore>,
     pub system_program: Program<'info, System>,
 }
 
 /// A cull the operator never answered, settled by anyone after the timeout
-/// with the same 85/15 split the operator would have applied.
+/// with the same 85/15 split the operator would have applied, paid to whoever
+/// owns the asset now. The asset is burned as in any settlement.
 pub fn force_settle_cull(ctx: Context<ForceSettleCull>, _id: u64) -> Result<()> {
     let c = &mut ctx.accounts.creature;
     require!(c.status == STATUS_OWNED, InstarError::WrongStatus);
@@ -262,7 +339,7 @@ pub fn force_settle_cull(ctx: Context<ForceSettleCull>, _id: u64) -> Result<()> 
 
     let estate = c.vault;
     c.vault = 0;
-    c.sale_price = 0;
+    c.clear_listing();
     c.status = STATUS_DEAD;
 
     let world = &mut ctx.accounts.world;
@@ -273,8 +350,16 @@ pub fn force_settle_cull(ctx: Context<ForceSettleCull>, _id: u64) -> Result<()> 
     world.total_credit = add(world.total_credit, to_keeper)?;
 
     let credit = &mut ctx.accounts.keeper_credit;
-    credit.owner = c.keeper;
+    credit.owner = ctx.accounts.asset.owner;
     credit.bump = ctx.bumps.keeper_credit;
     credit.amount = add(credit.amount, to_keeper)?;
-    assert_solvent(world)
+    assert_solvent(world)?;
+    Core {
+        program: &ctx.accounts.mpl_core_program,
+        world: &ctx.accounts.world,
+        collection: ctx.accounts.collection.as_ref(),
+        payer: &ctx.accounts.payer,
+        system_program: &ctx.accounts.system_program,
+    }
+    .burn(ctx.accounts.asset.as_ref())
 }

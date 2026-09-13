@@ -7,7 +7,11 @@
 # short-timers feature so the recovery drills can wait their timers out in
 # real time, runs `anchor test`, then restores the real-timer build.
 # target/deploy/instar.features records what the artifact on disk was built
-# with; deploy-program.mts refuses anything but "default".
+# with. It reads "building:<features>" from before cargo runs until every step
+# has succeeded, so a build that fails halfway leaves a marker that is never
+# mistaken for a finished one, whichever step overwrote the .so or did not;
+# deploy-program.mts refuses anything but "default", and a .so newer than the
+# marker (a cargo run the script did not make).
 set -eo pipefail
 export PATH="/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:/root/.avm/bin:$PATH"
 ROOT=/mnt/c/tech/connectomes
@@ -38,6 +42,8 @@ build() {
   # and devnet. The IDL is built separately; it does not depend on either.
   local args=(--arch v3)
   [ "$1" = "default" ] || args+=(--features "$1")
+  mkdir -p target/deploy
+  echo "building:$1" > target/deploy/instar.features
   quiet cargo build-sbf "${args[@]}"
   quiet anchor idl build -o target/idl/instar.json -t target/types/instar.ts
   test -f target/deploy/instar.so

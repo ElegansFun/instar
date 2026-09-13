@@ -3,13 +3,16 @@
 //
 //   npx tsx scripts/journey.mts            (INSTAR_URL, default http://localhost:8787)
 //
-// Two throwaway users: the first creates an account, is refused with the
-// wrong pin, is airdropped, buys the first larva on offer, lists it, unlists
-// it, transfers it to the second, and withdraws SOL to a sink address. A bad
-// token is rejected. Every step is asserted on what the API returns.
+// Two users are created. The first signs in, is refused with a wrong pin, is
+// airdropped, buys the first larva on offer, lists it, unlists it, transfers
+// it to the second, and withdraws SOL to a sink address. A bad token is
+// rejected. Every step is asserted on what the API returns, and every change
+// of hands on what the larva's Core asset says on chain: the API is trusted
+// for nothing it can be checked on.
 
 import assert from "assert";
-import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Chain, MPL_CORE } from "../services/chain/solana.mts";
 
 const BASE = (process.env.INSTAR_URL ?? "http://localhost:8787").replace(/\/$/, "");
 const OFFER_WAIT_MS = 5 * 60_000;
@@ -43,6 +46,22 @@ if (cfg.cluster === "mainnet-beta") throw new Error("journey needs the airdrop r
 const rpc = new Connection(process.env.INSTAR_RPC ?? cfg.rpc, "confirmed");
 console.log(`world ${BASE}  cluster ${cfg.cluster}  program ${cfg.programId}`);
 
+/// The asset as the chain holds it; the API's `keeper` must agree with it.
+async function assetOnChain(address: string) {
+  const pk = new PublicKey(address);
+  const info = await rpc.getAccountInfo(pk, "confirmed");
+  const a = info && Chain.decodeAsset(pk, info);
+  assert.ok(a, `asset ${address} is not on chain`);
+  return a;
+}
+
+const collectionInfo = await rpc.getAccountInfo(new PublicKey(cfg.collection), "confirmed");
+assert.ok(collectionInfo?.owner.equals(MPL_CORE), `config.collection ${cfg.collection} is not a Core account`);
+const collectionMeta = (await get("/api/collection.json")).json;
+assert.equal(collectionMeta.name, "Instar"); assert.equal(collectionMeta.symbol, "INSTAR");
+assert.ok((await fetch(collectionMeta.image)).ok, `collection image ${collectionMeta.image}`);
+ok(`/api/config collection ${cfg.collection.slice(0, 8)} is a Core account; /api/collection.json served`);
+
 const journal0 = (await get("/api/journal")).json;
 assert.equal(journal0.name, "instar");
 for (const k of ["cluster", "programId", "worldPda", "explorer", "seed", "era", "tick", "tickrate", "epoch", "epochInterval", "capacity", "bufferTicks",
@@ -57,6 +76,10 @@ ok(`/api/config world layout — lastStateHash at byte ${cfg.world.lastStateHash
 const suffix = Math.random().toString(36).slice(2, 8);
 const u1 = `journey-${suffix}`, u2 = `keeper-${suffix}`, pin = "hunter22";
 const noMatch = /no account matches/;
+// /api/auth allows five attempts per minute per address (anti-brute-force);
+// the auth section spends exactly five, so the third keeper signs up after
+// the window has passed.
+const authWindowOpens = Date.now() + 61_000;
 const unknown = await post("/api/auth", { user: u1, pin });
 assert.equal(unknown.status, 400, JSON.stringify(unknown.json));
 assert.match(String(unknown.json.error), noMatch);
@@ -103,26 +126,39 @@ ok(`buy larva ${id} at ${offered.salePrice} lamports -> ${bought.sig.slice(0, 12
 await expectError(post("/api/buy", { id }, a1.token), 409, /not offered/);
 ok("buying it again: refused");
 
+let rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+assert.equal(rec.keeper, a1.wallet);
+let asset = await assetOnChain(rec.asset);
+assert.equal(asset.owner.toBase58(), a1.wallet, "the Core asset's owner is the buyer's custodial wallet");
+assert.equal(asset.collection?.toBase58(), cfg.collection);
+assert.equal(asset.name, `Instar #${id}`);
+assert.equal(asset.uri, `${BASE}/api/larva/${id}.json`);
+ok(`asset ${rec.asset.slice(0, 8)} owned by ${u1}'s wallet on chain, in the collection, uri -> this world`);
+
 const meta = (await get(`/api/larva/${id}.json`)).json;
-assert.equal(meta.name, `Instar larva ${id}`);
-const svg = await fetch(`${BASE}/api/larva/${id}.svg`);
+assert.equal(meta.name, `Instar #${id}`); assert.equal(meta.symbol, "INSTAR");
+assert.equal(meta.image, `${BASE}/api/larva/${id}.svg`);
+assert.deepEqual(meta.properties, { files: [{ uri: meta.image, type: "image/svg+xml" }], category: "image" });
+assert.ok(Array.isArray(meta.attributes) && meta.attributes.some((t: any) => t.trait_type === "Generation" && t.value === rec.generation));
+const svg = await fetch(meta.image);
 assert.equal(svg.headers.get("content-type"), "image/svg+xml");
 assert.ok((await svg.text()).startsWith("<svg"));
-ok("larva metadata + portrait served");
+ok("larva metadata is Metaplex-shaped; portrait served");
 
 // ---- list / unlist -----------------------------------------------------------
 const askPrice = "20000000";
 const listed = (await post("/api/list", { id, lamports: askPrice }, a1.token)).json;
 assert.ok(listed.ok, JSON.stringify(listed));
-let rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
 assert.equal(rec.salePrice, askPrice);
-ok(`list at ${askPrice} lamports`);
+assert.ok(typeof rec.listedAt === "number" && rec.listedAt >= Math.floor(Date.now() / 1000) - 120, `listedAt ${rec.listedAt}`);
+ok(`list at ${askPrice} lamports (listedAt ${rec.listedAt})`);
 await expectError(post("/api/list", { id, lamports: "0" }, a1.token), 400, /above zero/);
 const unlisted = (await post("/api/unlist", { id }, a1.token)).json;
 assert.ok(unlisted.ok, JSON.stringify(unlisted));
 rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
-assert.equal(rec.salePrice, "0");
-ok("unlist");
+assert.equal(rec.salePrice, "0"); assert.equal(rec.listedAt, 0);
+ok("unlist clears the listing and its timestamp");
 
 // ---- transfer to another user ------------------------------------------------
 const a2 = (await post("/api/auth", { user: u2, pin, create: true })).json;
@@ -134,7 +170,9 @@ const me2 = (await post("/api/me", {}, a2.token)).json;
 assert.ok(me2.owned.includes(id));
 me = (await post("/api/me", {}, a1.token)).json;
 assert.ok(!me.owned.includes(id));
-ok(`transfer larva ${id} -> ${u2}`);
+asset = await assetOnChain(rec.asset);
+assert.equal(asset.owner.toBase58(), a2.wallet, "the transfer moved the Core asset");
+ok(`transfer larva ${id} -> ${u2}; asset owner on chain is ${u2}'s wallet`);
 
 // ---- name the lineage ----------------------------------------------------------
 // a1 no longer keeps the larva, so it cannot name the line; a2 can, unless an
@@ -151,6 +189,34 @@ if (named.status === 409) {
   assert.equal(j0.lineageNames[named.json.lineage]?.name, `line-${suffix}`);
   ok(`lineage ${named.json.lineage} named by its keeper; a non-keeper is refused`);
 }
+
+// ---- a native move leaves a stale listing behind -----------------------------
+// The second keeper lists, then moves the NFT with a plain transfer (what a
+// wallet does). The program is not told, so the listing stays on the record
+// but is void: buy_listed checks the lister still owns the asset. The new
+// owner unlists.
+assert.ok((await post("/api/airdrop", {}, a2.token)).json.ok);
+assert.ok((await post("/api/list", { id, lamports: askPrice }, a2.token)).json.ok);
+const back = (await post("/api/transfer", { id, to: a1.wallet }, a2.token)).json;
+assert.ok(back.ok, JSON.stringify(back));
+asset = await assetOnChain(rec.asset);
+assert.equal(asset.owner.toBase58(), a1.wallet);
+rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+assert.equal(rec.keeper, a1.wallet); assert.equal(rec.salePrice, askPrice, "the listing is still on the record");
+const u3 = `buyer-${suffix}`;
+if (Date.now() < authWindowOpens) {
+  console.log(`      waiting ${Math.ceil((authWindowOpens - Date.now()) / 1000)}s for the sign-in rate limit before creating ${u3}`);
+  await new Promise(r => setTimeout(r, authWindowOpens - Date.now()));
+}
+const a3 = (await post("/api/auth", { user: u3, pin, create: true })).json;
+assert.ok(a3.token, JSON.stringify(a3));
+assert.ok((await post("/api/airdrop", {}, a3.token)).json.ok);
+await expectError(post("/api/buylisted", { id }, a3.token), 400, /NotForSale/);
+await expectError(post("/api/unlist", { id }, a2.token), 403, /not yours/);
+assert.ok((await post("/api/unlist", { id }, a1.token)).json.ok);
+rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+assert.equal(rec.salePrice, "0");
+ok(`native move ${u2} -> ${u1} with a listing open: buy_listed by ${u3} refused (NotForSale); ${u1} unlists`);
 
 // ---- withdraw to a sink --------------------------------------------------------
 const sink = Keypair.generate().publicKey;
