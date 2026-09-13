@@ -722,7 +722,7 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
     const light = stream.light;
     setHud("h-light", stream.next ? `${light > 128 ? "day" : "night"} ${light}` : "\u2014");
     setHud("h-temp", stream.next ? (stream.temp / 100).toFixed(1) + " \u00b0C" : "\u2014");
-    if (frame % 30 === 1) setHud("lg-temp", stream.next ? `${((stream.temp - 300) / 100).toFixed(0)}\u2013${((stream.temp + 300) / 100).toFixed(0)} \u00b0C across the cage` : "\u2014");
+    setHud("lg-temp", stream.next ? `${((stream.temp - 300) / 100).toFixed(0)}\u2013${((stream.temp + 300) / 100).toFixed(0)} \u00b0C across the cage` : "\u2014");
     {
       let html;
       const v = verifierLine(live);

@@ -192,7 +192,7 @@ export class Cage3D {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMappingExposure = 0.78;
 
     const scene = this.scene = new THREE.Scene();
     scene.background = new THREE.Color(0xc9c3b4);
@@ -330,7 +330,7 @@ export class Cage3D {
 
     // panes: four walls and the lid, glass in an aluminium frame
     const glass = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, roughness: 0.03, metalness: 0, transparent: true, opacity: 0.09, clearcoat: 1, clearcoatRoughness: 0.03,
+      color: 0xeaf2f6, roughness: 0.03, metalness: 0, transparent: true, opacity: 0.13, clearcoat: 1, clearcoatRoughness: 0.03,
       envMapIntensity: 1.6, side: THREE.DoubleSide, depthWrite: false,
     });
     const panes = this.panes = [];
@@ -531,7 +531,9 @@ export class Cage3D {
       U.crossVectors(R, F).normalize();
       this._q2.setFromAxisAngle(R, -0.3);
       F.applyQuaternion(this._q2); U.applyQuaternion(this._q2);
-      this._q2.setFromAxisAngle(F, f.r || 0);
+      // bank: the engine's roll when it gives one, else from the turn rate
+      const roll = f.r || Math.max(-0.8, Math.min(0.8, -f.dh * 0.12));
+      this._q2.setFromAxisAngle(F, roll);
       U.applyQuaternion(this._q2);
       R.crossVectors(F, U).normalize();
     } else {
@@ -697,9 +699,9 @@ export class Cage3D {
   updateLight(light) {
     const l = light / 255;
     this.light = l;
-    this.lamp.intensity = 120 + 900 * l;
+    this.lamp.intensity = 80 + 620 * l;
     this.bulb.material.emissiveIntensity = 0.2 + 2.2 * l;
-    this.key.intensity = 0.15 + 1.25 * l;
+    this.key.intensity = 0.12 + 1.0 * l;
     this.key.color.setRGB(0.72 + 0.28 * l, 0.78 + 0.17 * l, 0.92 - 0.04 * l);
     this.fill.intensity = 0.06 + 0.34 * l;
     this.scene.environmentIntensity = 0.12 + 0.6 * l;

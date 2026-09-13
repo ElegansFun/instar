@@ -84,7 +84,11 @@ onmessage = async (ev) => {
     new Uint32Array(s.memory.buffer, s.out_start_ptr(), g.n + 1).set(g.outStart);
     new Uint32Array(s.memory.buffer, s.out_post_ptr(), g.e).set(g.outPost);
     new Int32Array(s.memory.buffer, s.edge_weight_ptr(), g.e).set(g.weight);
-    if (s.memory.buffer.byteLength !== image.length) throw new Error(`the snapshot image is ${image.length} bytes, this engine's memory ${s.memory.buffer.byteLength}: different builds`);
+    // the image may be larger than a fresh instance (the world's allocator
+    // grew while it ran); smaller, or not page-sized, means another build
+    const PAGE = 65536, have = s.memory.buffer.byteLength;
+    if (image.length % PAGE !== 0 || image.length < have) throw new Error(`the snapshot image is ${image.length} bytes, this engine's memory ${have}: different builds`);
+    if (image.length > have) s.memory.grow((image.length - have) / PAGE);
     new Uint8Array(s.memory.buffer).set(image);
     const maxPop = s.max_pop();
     const uids = () => new Uint32Array(s.memory.buffer, s.uid_ptr(), maxPop);

@@ -80,6 +80,7 @@ export class Stream {
     frame.at = at;
     // the first frame is doubled so there is always a pair to sample between
     this.prev = this.next || frame;
+    this.next = frame;
     this.frames++;
     this.t = frame.t;
     this.light = frame.light;
