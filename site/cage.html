@@ -87,9 +87,9 @@
     <div id="a-tx" class="stack"><div class="note">&mdash;</div></div>
     <h4>Verification</h4>
     <div class="note" id="v-line">&mdash;</div>
-    <div class="actions"><button id="v-run" hidden>Verify epoch in this browser</button></div>
+    <div class="actions"><button id="v-run" hidden>Verify the next epoch in this browser</button><button id="v-run-posted" hidden>Verify a posted epoch</button></div>
     <div class="msg" id="v-msg"></div>
-    <div class="note" id="v-caption">The CLI verifier (<span class="mono">scripts/verify-epoch.mts</span>) replays the world from its snapshot at native speed in Node and compares the epoch hash with the World account on chain; the operator can post its result to the journal, and that is what the line above reports. The button does the same replay here, in a Web Worker: it downloads the graph (~82 MB) and the snapshot (~0.7 GB uncompressed), needs about <span data-n="vmem">0.7</span> GB of memory, and takes minutes. A phone cannot do it, so the button is only offered on a desktop browser.</div>
+    <div class="note" id="v-caption">The CLI verifier (<span class="mono">scripts/verify-epoch.mts</span>) replays the world from a snapshot at native speed in Node and compares the epoch hash with the World account on chain; the operator can post its result to the journal, and that is what the line above reports. The buttons do the same replay here, in a Web Worker: it downloads the graph (~82 MB) and the world's snapshot (~0.7 GB after inflation, streamed straight into the engine's memory), holds about <span data-n="vmem">1</span> GB at its peak (measured on this build: the worker held 0.68 GB, the 611 MB engine image plus the graph tables it keeps to check the restore; the whole tab, cage and all, reached 1.4 GB), and takes a minute or more. &ldquo;The next epoch&rdquo; replays from the latest snapshot to the next boundary and then waits for the world to post it, so the chain is read after the operator has written it, not before; &ldquo;a posted epoch&rdquo; uses the snapshot the world kept from just before an epoch it has already posted. A phone cannot do it, so the buttons are only offered on a desktop browser reporting at least 4 GB of memory.</div>
   </div>
 </section>
 

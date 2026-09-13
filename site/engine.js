@@ -72,33 +72,48 @@ export async function readWorldAccount(config) {
 }
 
 // What the page can honestly say about verification without running
-// anything: the CLI verifier's last posted result, if the operator ran it.
+// anything: the CLI verifier's posted record, if the operator ran it. The
+// record keeps the set of distinct epochs found VERIFIED and the verdict
+// per epoch checked; a MISMATCH anywhere is the headline.
 export function verifierLine(journal) {
   const v = journal && journal.verifier;
   if (!v || !v.at) return null;
   const when = new Date(v.at);
   const date = isNaN(when) ? String(v.at) : when.toISOString().slice(0, 10);
-  const ok = v.verdict === "VERIFIED";
-  return {
-    cls: ok ? "ok" : "bad",
-    word: ok ? "VERIFIED" : "MISMATCH",
-    detail: `by the CLI verifier on ${date}, ${v.epochs} epoch${v.epochs === 1 ? "" : "s"}` + (ok ? "" : ` (epoch ${v.epoch} differs)`),
-    epoch: v.epoch, hash: v.hash, sig: v.sig, at: v.at,
-  };
+  const verified = Array.isArray(v.epochs) ? v.epochs : [];
+  const verdicts = v.verdicts && typeof v.verdicts === "object" ? v.verdicts : {};
+  const mismatched = Object.keys(verdicts).filter(k => verdicts[k] !== "VERIFIED").map(Number).sort((a, b) => a - b);
+  const ok = mismatched.length === 0 && v.verdict === "VERIFIED";
+  const n = verified.length;
+  const detail = ok
+    ? `${n} distinct epoch${n === 1 ? "" : "s"} by the CLI verifier, latest ${v.epoch}, ${date}; operator-posted`
+    : `epoch${mismatched.length === 1 ? "" : "s"} ${mismatched.join(", ") || v.epoch} differ${mismatched.length === 1 ? "s" : ""} from the chain (CLI verifier, ${date}); ${n} epoch${n === 1 ? "" : "s"} verified`;
+  const short = ok
+    ? `${n} epoch${n === 1 ? "" : "s"} by the CLI verifier, latest ${v.epoch}; operator-posted`
+    : `epoch ${mismatched.join(", ") || v.epoch} differs from the chain (CLI verifier)`;
+  return { cls: ok ? "ok" : "bad", word: ok ? "VERIFIED" : "MISMATCH", detail, short, epoch: v.epoch, hash: v.hash, sig: v.sig, at: v.at, epochs: verified, verdicts, mismatched };
 }
 
 // The desktop-only replay. Runs site/verify-worker.js, which loads the
-// canonical graph, the engine and the world's snapshot, replays to the
-// next posted epoch and hashes; this side compares the hash with the
-// journal and with the World account. Progress lines go to `status`.
-export const VERIFY_MEMORY_GB = 0.7;
+// canonical graph, the engine and one of the world's snapshots, replays to
+// the epoch boundary and hashes; this side compares the hash with the
+// journal and with the World account, waiting (bounded) for the world to
+// post that epoch. Progress lines go to `status`.
+//
+// Memory: the worker streams the snapshot into the engine's own memory, so
+// its peak is the engine image (~0.7 GB at 40 slots) plus the graph tables
+// it keeps for the restore check (~0.1 GB); the browser adds its own
+// overhead on top, so the gate asks for a 4 GB device.
+export const VERIFY_MEMORY_GB = 1;
 export function canVerifyHere() {
-  if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") return false;
+  if (typeof Worker === "undefined" || typeof WebAssembly === "undefined" || typeof DecompressionStream === "undefined") return false;
   const mem = navigator.deviceMemory;
-  if (mem !== undefined && mem < 2) return false;
+  if (mem !== undefined && mem < 4) return false;
   return window.innerWidth > 900 && !/Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
 }
-export function verifyEpochHere({ journal, config, status = () => {} }) {
+const CHAIN_WAIT_MS = 10 * 60_000;
+const CHAIN_POLL_MS = 5000;
+export function verifyEpochHere({ journal, config, epoch = null, status = () => {} }) {
   return new Promise((resolve, reject) => {
     const w = new Worker("./verify-worker.js", { type: "module" });
     w.onmessage = async (ev) => {
@@ -107,17 +122,26 @@ export function verifyEpochHere({ journal, config, status = () => {} }) {
       if (m.type === "error") { w.terminate(); reject(new Error(m.text)); return; }
       if (m.type !== "done") return;
       w.terminate();
-      const posted = journal.epochs.find(e => e.epoch === m.epoch);
-      const result = { epoch: m.epoch, tick: m.tick, local: m.hash, snapshotTick: m.snapshotTick, ticks: m.ticks, ms: m.ms, journal: posted ? posted.hash === m.hash : null, posted, chain: null, onChain: null, chainError: null };
+      const result = { epoch: m.epoch, tick: m.tick, local: m.hash, snapshotTick: m.snapshotTick, ticks: m.ticks, ms: m.ms, peakBytes: m.peakBytes, imageBytes: m.imageBytes, journal: null, posted: null, chain: null, onChain: null, chainError: null };
+      // the world posts the boundary's hash once its tx confirms; wait for it
+      const giveUp = Date.now() + CHAIN_WAIT_MS;
       try {
-        const c = await readWorldAccount(config);
-        if (c.epoch === m.epoch) { result.onChain = c.hash; result.chain = c.hash === m.hash; }
-        else result.chainError = c.epoch > m.epoch ? `the chain has moved on to epoch ${c.epoch}` : `epoch ${m.epoch} is not posted yet (chain at ${c.epoch})`;
+        for (;;) {
+          const c = await readWorldAccount(config);
+          if (c.tick === m.tick) { result.onChain = c.hash; result.chain = c.hash === m.hash; break; }
+          if (c.tick > m.tick) { result.chainError = `the chain has moved on to epoch ${c.epoch}`; break; }
+          if (Date.now() > giveUp) { result.chainError = `epoch ${m.epoch} was not posted within ten minutes (chain at ${c.epoch})`; break; }
+          status(`replayed to tick ${m.tick.toLocaleString("en-US")}: hash ${m.hash}; waiting for the world to post epoch ${m.epoch} (chain at epoch ${c.epoch})`);
+          await new Promise(r => setTimeout(r, CHAIN_POLL_MS));
+        }
       } catch (e) { result.chainError = e.message; }
+      const fresh = await fetchJournal(8000);
+      const posted = ((fresh || journal).epochs || []).find(e => e.epoch === m.epoch);
+      if (posted) { result.posted = posted; result.journal = posted.hash === m.hash; }
       resolve(result);
     };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "the verifier worker failed")); };
-    w.postMessage({ api: API, cbg: CBG_URL, nodes: NODES_URL, wasm: WASM_URL, journal: { entries: journal.entries, epochs: journal.epochs, epochInterval: journal.epochInterval, seed: journal.seed } });
+    w.postMessage({ api: API, cbg: CBG_URL, nodes: NODES_URL, wasm: WASM_URL, epoch, journal: { entries: journal.entries, epochs: journal.epochs, epochInterval: journal.epochInterval, seed: journal.seed, era: journal.era, tick: journal.tick, bufferTicks: journal.bufferTicks } });
   });
 }
 

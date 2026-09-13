@@ -317,12 +317,21 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
   }
 
   // ---------- verification ----------
-  // What this page can say: the CLI verifier's posted result, and, on a
-  // desktop, a replay of the next epoch after the world's snapshot here.
+  // What this page can say: the CLI verifier's posted record, and, on a
+  // desktop, a replay here: from the latest snapshot to the next epoch the
+  // world posts, or from a retained pre-boundary snapshot to an epoch
+  // already posted.
   let verifying = false, verifyResult = null;
-  const verifyBtn = $("v-run");
-  verifyBtn.hidden = !canVerifyHere();
+  const verifyBtn = $("v-run"), verifyPostedBtn = $("v-run-posted");
+  const offerVerify = canVerifyHere();
+  verifyBtn.hidden = !offerVerify;
   document.querySelectorAll('[data-n="vmem"]').forEach(el => { el.textContent = String(VERIFY_MEMORY_GB); });
+  // the newest posted epoch the world still holds a pre-boundary snapshot for
+  const postedVerifiable = () => {
+    const kept = Array.isArray(live.snapshotEpochs) ? live.snapshotEpochs : [];
+    const posted = new Set((live.epochs || []).map(e => e.epoch));
+    return kept.filter(n => posted.has(n)).sort((a, b) => b - a)[0] ?? null;
+  };
   function renderVerification() {
     const v = verifierLine(live);
     let html = v
@@ -332,23 +341,30 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
       const r = verifyResult;
       const chain = r.chain === true ? `<b class="ok">VERIFIED on chain</b> World.last_state_hash \u2026${esc(r.onChain)}` : r.chain === false ? `<b class="bad">DIVERGED from chain</b> chain \u2026${esc(r.onChain)}` : `chain not compared: ${esc(r.chainError)}`;
       const jr = r.journal === true ? `matches the journal` : r.journal === false ? `<b class="bad">DIFFERS from the journal</b> (posted ${esc(r.posted.hash)})` : `epoch ${r.epoch} is not in the journal`;
-      html += `<br><b>this browser</b> replayed ${fmt(r.ticks)} ticks from the snapshot at tick ${fmt(r.snapshotTick)} to epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s: hash ${esc(r.local)}, ${jr}; ${chain}`;
+      html += `<br><b>this browser</b> replayed ${fmt(r.ticks)} ticks from the snapshot at tick ${fmt(r.snapshotTick)} to epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s, holding ${(r.peakBytes / 1073741824).toFixed(2)} GB at most (engine image ${(r.imageBytes / 1048576).toFixed(0)} MB): hash ${esc(r.local)}, ${jr}; ${chain}`;
     }
     setHtml("v-line", html);
-    const nextEpoch = live.epochs && live.epochs.length ? live.epochs[live.epochs.length - 1].epoch : null;
-    verifyBtn.textContent = verifying ? "verifying\u2026" : nextEpoch !== null ? `Verify epoch ${nextEpoch} in this browser` : "Verify the next epoch in this browser";
+    const nextEpoch = Math.floor((stream.t || live.tick) / live.epochInterval) + 1;
+    verifyBtn.textContent = verifying ? "verifying\u2026" : `Verify the next epoch (${nextEpoch}) in this browser`;
     verifyBtn.disabled = verifying;
+    const pv = postedVerifiable();
+    verifyPostedBtn.hidden = !offerVerify || pv === null;
+    verifyPostedBtn.textContent = verifying ? "verifying\u2026" : `Verify posted epoch ${pv}`;
+    verifyPostedBtn.disabled = verifying;
   }
-  verifyBtn.addEventListener("click", async () => {
+  async function runVerify(epoch) {
     if (verifying) return;
-    if (!confirm(`This downloads the canonical graph (~82 MB) and the world's latest snapshot, allocates about ${VERIFY_MEMORY_GB} GB of memory in a worker, and replays up to one epoch of the world at engine speed. It can take several minutes. Continue?`)) return;
+    const what = epoch === null ? "the world's latest snapshot and replays to the next epoch boundary, then waits for the world to post it (up to ten minutes)" : `the snapshot the world kept before epoch ${epoch} and replays to that boundary`;
+    if (!confirm(`This downloads the canonical graph (~82 MB) and ${what}. The worker streams the ~0.7 GB snapshot straight into the engine's memory and holds about ${VERIFY_MEMORY_GB} GB at its peak (measured: 0.68 GB in the worker, 1.4 GB for the whole tab). It can take several minutes. Continue?`)) return;
     verifying = true; renderVerification();
     const m = $("v-msg"); m.className = "msg"; m.textContent = "starting the worker";
     try {
       const fresh = await fetchJournal(8000);
-      if (fresh) Object.assign(live, { entries: fresh.entries, epochs: fresh.epochs });
-      verifyResult = await verifyEpochHere({ journal: live, config, status: (s) => { m.textContent = s; } });
-      m.className = "msg ok"; m.textContent = `done in ${(verifyResult.ms / 1000).toFixed(0)} s`;
+      if (fresh) Object.assign(live, { entries: fresh.entries, epochs: fresh.epochs, tick: fresh.tick, bufferTicks: fresh.bufferTicks, snapshotEpochs: fresh.snapshotEpochs, era: fresh.era, seed: fresh.seed });
+      verifyResult = await verifyEpochHere({ journal: live, config, epoch, status: (s) => { m.textContent = s; } });
+      const verdict = verifyResult.chain === true ? "VERIFIED" : verifyResult.chain === false || verifyResult.journal === false ? "MISMATCH" : "replayed";
+      m.className = verdict === "VERIFIED" ? "msg ok" : verdict === "MISMATCH" ? "msg err" : "msg";
+      m.textContent = `${verdict}: epoch ${verifyResult.epoch} in ${(verifyResult.ms / 1000).toFixed(0)} s`;
       pushChain(verifyResult.chain === true
         ? `<b>epoch ${verifyResult.epoch} VERIFIED on chain by this browser</b> ${esc(verifyResult.local)}`
         : verifyResult.chain === false || verifyResult.journal === false
@@ -359,7 +375,9 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
     } finally {
       verifying = false; renderVerification();
     }
-  });
+  }
+  verifyBtn.addEventListener("click", () => runVerify(null));
+  verifyPostedBtn.addEventListener("click", () => { const pv = postedVerifiable(); if (pv !== null) runVerify(pv); });
 
   // ---------- brain window ----------
   const brain = mountBrainPanel({ bars: $("brain-bars"), raster: $("brain-raster"), config });
@@ -731,7 +749,7 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
       else if (stream.state === "stalled") html = `<b class="warn">STREAM STALLED</b> no frame for 3 s`;
       else if (stream.state === "reconnecting") html = `<b class="warn">STREAM DROPPED</b> reconnecting`;
       else if (stream.state !== "live") html = `<b class="warn">CONNECTING</b> to the stream`;
-      else if (v) html = `<b class="${v.cls}">${v.word}</b> ${esc(v.detail)}`;
+      else if (v) html = `<b class="${v.cls}">${v.word}</b> ${esc(v.short)}`;
       else html = `<b>LIVE</b> ${esc(live.cluster)} \u00b7 unverified by this page`;
       setHtml("h-state", html);
     }

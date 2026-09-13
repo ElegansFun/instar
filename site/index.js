@@ -107,7 +107,7 @@ async function loadCensusHeader() {
       else if (stream.state === "stalled") html = `<b>STREAM STALLED</b> no frame for 3 s`;
       else if (stream.state === "reconnecting") html = `<b>STREAM DROPPED</b> reconnecting`;
       else if (stream.state !== "live") html = `<b>CONNECTING</b>`;
-      else if (vd) html = `<b class="${vd.cls}">${vd.word}</b> ${esc(vd.detail)}`;
+      else if (vd) html = `<b class="${vd.cls}">${vd.word}</b> ${esc(vd.short)}`;
       else html = `<b>LIVE</b> unverified: no verifier result posted`;
       if (v.innerHTML !== html) v.innerHTML = html;
     }
@@ -154,11 +154,10 @@ async function loadCensusHeader() {
       ? offers.map(l => `<tr><td>#${l.id}</td><td>gen ${l.generation}</td><td class="n">${price(l.salePrice)} SOL</td></tr>`).join("")
       : `<tr><td class="faint">no newborn is offered right now; the next birth will be</td></tr>`;
     const eps = [...(live.epochs || [])].slice(-12).reverse();
-    const v = live.verifier;
     $("epoch-table").querySelector("tbody").innerHTML = eps.length
       ? eps.map(ep => {
-        const checked = v && v.epoch === ep.epoch;
-        const state = checked ? (v.verdict === "VERIFIED" ? "verified" : "MISMATCH") : "posted";
+        const verdict = vd ? (vd.verdicts[ep.epoch] ?? (vd.epochs.includes(ep.epoch) ? "VERIFIED" : vd.epoch === ep.epoch ? vd.word : undefined)) : undefined;
+        const state = verdict === undefined ? "posted" : verdict === "VERIFIED" ? "verified" : "MISMATCH";
         const cls = state === "verified" ? "chain-c" : state === "MISMATCH" ? "bad" : "faint";
         return `<tr><td class="n">${ep.epoch}</td><td class="n">${fmt(ep.tick)}</td><td class="sig">${esc(ep.hash)}</td><td class="${cls}">${state}</td><td>${link("tx", ep.sig, live)}</td></tr>`;
       }).join("")

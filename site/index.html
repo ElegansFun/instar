@@ -33,7 +33,7 @@
 <div class="title-block">
   <div>
     <h1>A cage of flies,<br>each driven by a complete<br>nervous system <i>wiring diagram.</i></h1>
-    <p class="lede">Instar is a persistent world of adult male <i>Drosophila melanogaster</i> in a lab cage. Every fly runs every neuron of the MaleCNS connectome, and every connection of five or more synapses: <span data-n="nodes">&mdash;</span> neurons, <span data-n="edges">&mdash;</span> connections, from one male fly's brain, optic lobes and nerve cord reconstructed by Janelia FlyEM. It smells, sees, walks, flies, feeds and courts on its own. Each one is an NFT on Solana, in the Instar collection: buying mints it into your wallet, resale moves it, death burns it.</p>
+    <p class="lede">Instar is a persistent world of adult male <i>Drosophila melanogaster</i> in a lab cage. Every fly runs every neuron of the MaleCNS connectome, and every connection of five or more synapses: <span data-n="nodes">&mdash;</span> neurons, <span data-n="edges">&mdash;</span> connections, from one male fly's brain, optic lobes and nerve cord reconstructed by Janelia FlyEM. It smells, sees, walks, flies and feeds on its own, and breeds when its energy and neurosecretory rate allow and another fly is within reach. Each one is an NFT on Solana, in the Instar collection: buying mints it into your wallet, resale moves it, death burns it.</p>
   </div>
   <div class="abstract" id="abstract">
     <div><b>Census</b> <span data-n="nodes">&mdash;</span> neurons, <span data-n="edges">&mdash;</span> connections of &ge; 5 synapses</div>
@@ -76,7 +76,7 @@
     <div id="measurements-note" class="foot" hidden></div>
     <div class="foot">
       <div class="fn"><sup>1</sup><span>The canonical census is regenerated from Janelia's published connection weights and body annotations by a converter in this repository and is byte-verifiable; the numbers of neurons and connections in the abstract are read from the world's copy of it, not typed in.</span></div>
-      <div class="fn"><sup>2</sup><span>No claim of a biological simulation is made. The words used here are &ldquo;driven by&rdquo;. Where a behaviour is described (takeoff, feeding, courtship) it names the engine rule, not a property of the animal.</span></div>
+      <div class="fn"><sup>2</sup><span>No claim of a biological simulation is made. The words used here are &ldquo;driven by&rdquo;. Where a behaviour is described (takeoff, feeding, breeding) it names the engine rule, not a property of the animal.</span></div>
       <div class="fn"><sup>3</sup><span>Every quoted number is produced by a script in <span class="mono">scripts/</span> and stated with its tick horizon. If this figure is hidden, the measurements file has not been generated for this build and no number is shown in its place.</span></div>
     </div>
   </div>
@@ -114,7 +114,7 @@
     <table class="data">
       <thead><tr><th>Sense</th><th>What the engine writes into it</th></tr></thead>
       <tbody>
-        <tr><td>olfactory</td><td>odour diffusing in three dimensions from the food, refreshed every 8 ticks</td></tr>
+        <tr><td>olfactory</td><td>odour from the food as a two-dimensional field on the floor (a chamfer decay of 7/8 per cell, refreshed every 8 ticks), read thinner with height and gone at the lid</td></tr>
         <tr><td>gustatory, leg taste</td><td>the substrate under the tarsi and the proboscis</td></tr>
         <tr><td>Johnston's organ</td><td>the fly's own airflow in flight, and neighbours' wingbeats within a radius</td></tr>
         <tr><td>bristle, chordotonal</td><td>contact, and the fly's own leg motion</td></tr>
@@ -129,7 +129,7 @@
       <thead><tr><th>Cause</th><th>Rule</th><th class="n">This page has seen</th></tr></thead>
       <tbody id="death-table">
         <tr data-c="starved"><td>starved</td><td>energy reaches zero; a fly whose proboscis motor neurons stay silent on food cannot eat</td><td class="n">0</td></tr>
-        <tr data-c="senescence"><td>senescence</td><td>age limit reached</td><td class="n">0</td></tr>
+        <tr data-c="senescence"><td>senescence</td><td>energy runs out past 32,768 ticks of age, when upkeep climbs by one per 256 further ticks; there is no age limit</td><td class="n">0</td></tr>
         <tr data-c="killed"><td>killed</td><td>a contest with a neighbour</td><td class="n">0</td></tr>
         <tr data-c="desiccated"><td>desiccated</td><td>too long in the dry corner</td><td class="n">0</td></tr>
         <tr data-c="drowned"><td>drowned</td><td>too long in the water</td><td class="n">0</td></tr>
@@ -140,7 +140,7 @@
   </div>
   <aside class="sec-margin">
     <div class="mnote"><b>Now in the cage</b><div class="kv" id="cage-now">&mdash;</div></div>
-    <div class="mnote"><b>Two ways to move</b><br>Walking: the fly is attached to a surface with a heading in its plane; leg motor neurons set speed and turn per side, and the three leg pairs' rates drive the gait you see. Flight: wing power motor neurons give thrust, steering neurons left and right give yaw and roll, haltere neurons a stability term; takeoff when the power rate crosses a threshold, landing on contact when it drops. Flight costs six times what walking does.</div>
+    <div class="mnote"><b>Two ways to move</b><br>Walking: the fly is attached to a surface with a heading in its plane; leg motor neurons set speed and turn per side, and the three leg pairs' rates drive the gait you see. Flight: wing power motor neurons give thrust, steering neurons left and right give yaw and roll, haltere neurons a stability term; takeoff when the power rate crosses a threshold, landing on contact when it drops. Per tick, walking costs its thrust divided by 1,024; flight costs twice that thrust term plus a fixed 48, on top of the base upkeep of 4 that every fly pays.</div>
     <div class="mnote"><b>Reproduction</b><br>The neurosecretory rate gates fecundity. A fly with enough energy, the gate open and a partner within radius produces a child by crossover with a few signed mutations to connection weights. Every animal runs the same male nervous system; the world treats reproduction as a rule, not as biology.</div>
   </aside>
 </section>

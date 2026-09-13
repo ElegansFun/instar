@@ -1,13 +1,17 @@
 // The world's /api/stream, read and smoothed. Frames arrive ten times a
 // second; the renderer asks for the state at a moment a little in the past
-// and gets every fly interpolated between the two frames around it, so
-// sixty frames a second come out of ten. Nothing is extrapolated: a fly is
-// never drawn where the world has not yet said it is.
+// and gets every fly interpolated between the two frames that bracket it,
+// so sixty frames a second come out of ten. Nothing is extrapolated: a fly
+// is never drawn where the world has not yet said it is.
 import { API } from "./engine.js";
 
 const TAU = Math.PI * 2;
-// render this far behind the newest frame: one frame interval plus jitter
-const LAG_MS = 160;
+// render this far behind the newest frame. Frames are 100 ms apart, so the
+// sampled moment normally sits inside the newest pair with 20 ms of jitter
+// headroom; the ring below holds enough older frames that a late frame
+// still finds a bracketing pair rather than a hold-then-jump.
+const LAG_MS = 120;
+const RING = 4;
 // no frame for this long and the stream is called stalled
 const STALL_MS = 3000;
 const RETRY_MS = [1000, 2000, 4000, 8000];
@@ -32,8 +36,9 @@ export class Stream {
     this.onFrame = onFrame;
     this.onEvent = onEvent;
     this.onState = onState;
-    this.prev = null;   // the two newest frames, with arrival times
-    this.next = null;
+    this.ring = [];     // the RING newest frames, oldest first, with arrival times
+    this.lastSeq = 0;   // newest event sequence number shown (SITE-3 dedupe)
+    this.lastEvTick = -1;
     this.state = "connecting";
     this.es = null;
     this.retries = 0;
@@ -78,9 +83,8 @@ export class Stream {
 
   push(frame, at) {
     frame.at = at;
-    // the first frame is doubled so there is always a pair to sample between
-    this.prev = this.next || frame;
-    this.next = frame;
+    this.ring.push(frame);
+    if (this.ring.length > RING) this.ring.shift();
     this.frames++;
     this.t = frame.t;
     this.light = frame.light;
@@ -88,20 +92,44 @@ export class Stream {
     this.setState("live");
     clearTimeout(this.stallTimer);
     this.stallTimer = setTimeout(() => this.setState("stalled"), STALL_MS);
-    // the first frame carries the world's recent event history; only what
-    // happened at or just before joining is news
-    if (frame.events) for (const e of frame.events) if (this.frames > 1 || e.tick >= frame.t - 40) this.onEvent(e);
+    if (frame.events) for (const e of frame.events) {
+      // the connect frame repeats the events the next timer frame also
+      // carries (the world does not consume them for a new client), and a
+      // reconnect replays recent history: an event is news once. `seq` is
+      // monotone for the life of the world process; after a restart it
+      // begins again, so an event at a tick this client has never seen is
+      // news whatever its seq
+      if (e.seq !== undefined) {
+        if (e.seq <= this.lastSeq && e.tick <= this.lastEvTick) continue;
+        this.lastSeq = e.seq;
+      }
+      if (e.tick > this.lastEvTick) this.lastEvTick = e.tick;
+      // the first frame carries the world's recent event history; only what
+      // happened at or just before joining is news
+      if (this.frames > 1 || e.tick >= frame.t - 40) this.onEvent(e);
+    }
     this.onFrame(frame);
   }
 
-  // The flies as of `now - LAG_MS`, interpolated. Flies present in only one
+  // the newest frame, or null
+  get next() { return this.ring.length ? this.ring[this.ring.length - 1] : null; }
+
+  // The flies as of `now - LAG_MS`, interpolated between the two ring
+  // frames around that moment. Before the oldest frame the oldest pair is
+  // held at its start; past the newest, the newest pair is held at its end
+  // (the stream is late; nothing is extrapolated). Flies present in only one
   // of the two frames (just born, just died) take that frame's state.
   sample(now) {
-    const a = this.prev, b = this.next;
+    const ring = this.ring;
     this.view.length = 0;
-    if (!b) return this.view;
+    if (!ring.length) return this.view;
+    const when = now - LAG_MS;
+    // the newest pair whose older frame is at or before `when`
+    let i = ring.length - 1;
+    while (i > 1 && ring[i - 1].at > when) i--;
+    const a = ring[Math.max(0, i - 1)], b = ring[i];
     const span = b.at - a.at;
-    const alpha = span > 0 ? Math.max(0, Math.min(1, (now - LAG_MS - a.at) / span)) : 1;
+    const alpha = span > 0 ? Math.max(0, Math.min(1, (when - a.at) / span)) : 1;
     const prevById = a === b ? null : new Map(a.flies.map(f => [f.id, f]));
     const seen = new Set();
     for (const fb of b.flies) {
