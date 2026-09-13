@@ -167,6 +167,8 @@ table.data a.chain { word-break: break-all; }
 .fig2 .tools button { font-size: 10.5px; padding: 4px 8px; background: var(--paper); }
 .fig2 .tools button.on { background: var(--ink); color: var(--paper); }
 .fig2 .tip { position: absolute; pointer-events: none; font-family: var(--mono); font-size: 11px; background: var(--ink); color: var(--paper); padding: 4px 7px; display: none; white-space: nowrap; }
+.fig2 .brain-frame canvas { image-rendering: pixelated; }
+.fig2 .brain-frame canvas + canvas { border-top: 1px solid var(--rule); }
 
 .measure-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 26px; margin: 18px 0 10px; }
 .measure-grid .m { border-top: 1px solid var(--ink); padding: 8px 0 12px; }
@@ -218,10 +220,10 @@ footer.colophon .mono { font-size: 11px; line-height: 1.7; }
 }
 
 /* =====================================================================
-   dish.html — the full-screen bench
+   cage.html — the full-screen bench
    ===================================================================== */
 body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--yeast); }
-.bench #dish { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.bench #cage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .bench .hud {
   position: fixed; left: 0; right: 0; top: 0; z-index: 5;
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
@@ -313,7 +315,7 @@ body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--
 .win .art { width: 100%; height: 72px; display: block; border-bottom: 1px solid var(--rule); background: var(--yeast); object-fit: contain; }
 
 #win-market { left: 14px; top: 52px; }
-#win-larvae { left: 14px; bottom: 52px; }
+#win-flies { left: 14px; bottom: 52px; }
 #win-mine { right: 14px; top: 52px; }
 #win-activity { right: 14px; bottom: 52px; width: 420px; }
 #win-brain { left: 390px; top: 52px; width: 480px; }
@@ -330,12 +332,20 @@ body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--
 .bench .crosshair::after { top: 5px; left: 0; height: 2px; width: 12px; }
 .bench .boot { position: fixed; inset: 0; z-index: 7; display: flex; align-items: center; justify-content: center; background: var(--paper); font-family: var(--mono); font-size: 12px; color: var(--ink-2); text-align: center; padding: 20px; }
 .bench .boot.gone { display: none; }
+/* the cage's gradients, named: temperature runs cold to hot along the
+   floor's tint, humidity from the water pool to the salt corner */
+.bench .legend3d { position: fixed; right: 14px; bottom: 44px; z-index: 4; font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); background: rgba(243, 238, 227, 0.9); padding: 6px 10px; border: 1px solid var(--rule); display: grid; gap: 4px; }
+.bench .legend3d .row { display: flex; align-items: center; gap: 8px; }
+.bench .legend3d .row span:first-child { width: 78px; letter-spacing: 0.08em; text-transform: uppercase; }
+.bench .legend3d i { display: inline-block; width: 72px; height: 8px; border: 1px solid var(--rule-strong); }
+.bench .legend3d i.temp { background: linear-gradient(90deg, #cfd9e0, #eeece6, #f0d8b8); }
+.bench .legend3d i.hum { background: linear-gradient(90deg, #a9c3c8, #e8e6df, #f4f2ea); }
 
 @media (max-width: 560px) {
   .win { width: calc(100vw - 20px) !important; left: 10px !important; right: auto !important; transform: none !important; max-height: 55vh; }
   #win-brain, #win-inspect { top: auto; }
   .bench .hud { gap: 10px; font-size: 10.5px; }
-  .bench .hint { display: none; }
+  .bench .hint, .bench .legend3d { display: none; }
   /* seven buttons must fit a 390px bar: tighter padding, no letter-spacing,
      and the right group stops floating so nothing lands off-screen */
   .bench .dock { padding: 0; font-size: 10px; letter-spacing: 0; flex-wrap: wrap; overflow: hidden; }

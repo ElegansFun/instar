@@ -1,13 +1,16 @@
-// index.html: the monograph. Boots the engine, embeds the live dish, fills every
-// number from the census file, the engine, or the world's journal.
-import { boot, pollJournal, verdict, fillConstants } from "./engine.js";
-import { Dish3D } from "./dish3d.js";
-import { mountBrainMap } from "./brainmap.js";
+// index.html: the monograph. Draws the live cage from the world's stream,
+// embeds the brain panel, and fills every number from the census header,
+// the world's config, or its journal.
+import { boot, fetchJournal, verifierLine, fillConstants, CENSUS_HEADER_URL, API } from "./engine.js";
+import { Stream } from "./stream.js";
+import { Cage3D } from "./cage3d.js";
+import { mountBrainPanel, roleRows } from "./brainmap.js";
 import { explorerLink, sol, price, short, esc, fmt, STATUS, STATUS_NAME } from "./api.js";
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, v) => { const el = $(id); if (el && el.textContent !== String(v)) el.textContent = String(v); };
 const link = (kind, value, src, n = 8) => value ? `<a class="chain" href="${esc(explorerLink(kind, value, src))}" target="_blank" rel="noopener">${esc(value.length > 2 * n + 1 ? short(value, n) : value)}</a>` : "\u2014";
+const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north wall", "the south wall", "the lid"];
 
 // The measurements figure is filled from site/measurements.json when the
 // build has one; otherwise it stays hidden rather than showing placeholders.
@@ -25,129 +28,137 @@ async function loadMeasurements() {
     if (m.note) { $("measurements-note").textContent = m.note; $("measurements-note").hidden = false; }
   } catch { /* no file: the figure stays hidden */ }
 }
+async function loadCensusHeader() {
+  try {
+    const r = await fetch(API + CENSUS_HEADER_URL);
+    if (!r.ok) return;
+    const c = await r.json();
+    setText("lc-id", c.dataset.id);
+    setText("lc-root", c.merkle.root_sha256);
+  } catch { /* the header stays blank */ }
+}
 
 (async function main() {
   setText("st-verify", "booting");
-  const world = await boot({ status: (s) => setText("st-verify", s) });
-  const { census, sim } = world;
-  const live = world.live;
-
-  // ---- abstract: counted, not typed ----
-  fillConstants(world);
-  setText("lc-id", census.dataset.id);
-  setText("lc-root", census.merkle.root_sha256);
-  if (live) {
-    $("ab-chain").innerHTML = `${esc(live.cluster)} &middot; program ${link("address", live.programId, live)}`;
-    setText("ab-mode", world.joinedAt
-      ? `joined the world at tick ${fmt(world.joinedAt)} from its snapshot and verifies every epoch from there`
-      : "replays the world's journal from genesis and verifies every epoch hash");
-  } else {
-    setText("ab-mode", "runs a local sandbox from a fresh genesis; no chain, no market, nothing recorded");
+  const { journal, config } = await boot({ status: (s) => setText("st-verify", s) });
+  const live = journal;
+  loadMeasurements();
+  if (!live) {
+    $("st-verify").innerHTML = `<b class="bad">NO WORLD</b> ${esc(API ? "nothing answers at " + API : "this page must be served by the world process")}`;
+    setText("st-cluster", "none");
+    setText("ab-mode", "found no world to draw; nothing here is live");
+    return;
   }
+  if (!config.arena) throw new Error("the world did not publish its arena");
+  fillConstants(config, live);
+  loadCensusHeader();
+  $("ab-chain").innerHTML = `${esc(live.cluster)} &middot; program ${link("address", live.programId, live)}`;
 
-  // ---- the dish ----
-  const canvas = $("dish");
-  const dish = new Dish3D(canvas, world, { embedded: true, onSelect: (slot) => describeSlot(slot) });
-  const note = $("dish-note");
-  function describeSlot(slot) {
-    if (slot < 0) { note.textContent = "drag to orbit \u00b7 click a larva to read it"; return; }
-    const uid = world.uids()[slot], gen = world.generations()[slot], en = world.energy()[slot], age = world.ages()[slot];
-    const rec = live && live.larvae ? live.larvae.find(l => l.id === uid) : null;
-    note.textContent = `#${uid} \u00b7 gen ${gen} \u00b7 energy ${fmt(en)} \u00b7 age ${fmt(age)}` +
-      (rec ? ` \u00b7 ${STATUS_NAME[rec.status]} \u00b7 vault ${sol(rec.vault)} SOL` : "");
+  // ---- the cage ----
+  const cage = new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: true, onSelect: (id) => { describe(id); brain.watch(id, (info) => { rasterInfo = info; }); } });
+  const stream = new Stream({ onEvent: (ev) => { if (ev.name === "death" && ev.cause) deaths.set(ev.cause, (deaths.get(ev.cause) || 0) + 1); } });
+  let flies = [];
+  const note = $("cage-note");
+  function describe(id) {
+    if (id < 0) { note.textContent = "drag to orbit \u00b7 click a fly to read it"; return; }
+    const f = cage.flyById(id);
+    if (!f) return;
+    const rec = (live.flies || []).find(l => l.id === id);
+    note.textContent = `#${id} \u00b7 ${f.mode ? `flying at layer ${f.z.toFixed(1)}` : `walking on ${SURFACE_NAME[f.s] || "the cage"}`} \u00b7 energy ${fmt(f.e)}` +
+      (rec ? ` \u00b7 gen ${rec.generation} \u00b7 ${STATUS_NAME[rec.status]} \u00b7 vault ${sol(rec.vault)} SOL` : "");
   }
   const deaths = new Map();
-  world.onEvent((ev) => { if (ev.kind === 2) deaths.set(ev.b, (deaths.get(ev.b) || 0) + 1); });
 
   // ---- the brain ----
-  const brain = mountBrainMap({
-    canvas: $("brainmap"), census, roles: world.roles,
-    legend: $("role-legend").querySelector("tbody"), tip: $("brain-tip"), tools: $("brain-tools"),
-    edgesEl: document.querySelector("#brain .fig-cap [data-edges]"),
-  });
+  const brain = mountBrainPanel({ bars: $("brain-bars"), raster: $("brain-raster"), config });
+  let rasterInfo = null;
+  setText("b-stride", brain.stride);
+  $("role-legend").querySelector("tbody").innerHTML = roleRows(config).map(([r, label, n]) => `<tr><td>${r}</td><td>${esc(label)}</td><td class="n">${fmt(n)}</td></tr>`).join("");
+  function renderBrain() {
+    const id = cage.selected >= 0 ? cage.selected : (flies[0] ? flies[0].id : -1);
+    if (id >= 0 && id !== watched) { watched = id; brain.watch(id, (info) => { rasterInfo = info; }); }
+    const f = id >= 0 ? cage.flyById(id) : null;
+    brain.bars(f ? f.fired : null);
+    setText("brain-cap", f
+      ? `Fly #${id}, ${f.mode ? "flying" : "walking"}, at the world's tick ${fmt(stream.t)}. Bars: neurons that fired, by role group, over the group's size, log scale. Raster: every ${brain.stride}th neuron in canonical order, ${fmt(brain.sampled)} of ${fmt(brain.nodes)}, one ${brain.dot}\u00d7${brain.dot} dot each, drawn when it fired${rasterInfo ? `; ${fmt(rasterInfo.lit)} of them did` : ""}. The raster is read from the world four times a second, so it lags the cage by up to a quarter second.`
+      : "no fly is in the cage right now");
+  }
+  let watched = -1;
 
-  loadMeasurements();
-
-  // ---- static-per-frame counters ----
+  // ---- the frame loop ----
   let frame = 0, lastT = performance.now();
   function loop() {
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
-    const behind = world.pace(now);
-    dish.render(dt);
+    flies = stream.sample(now);
+    cage.render(flies, stream.next ? stream.light : 255, dt);
     frame++;
-    setText("st-tick", fmt(world.tick()));
-    setText("st-pop", sim.pop_count());
-    setText("st-epoch", fmt(world.epoch()));
-    if (live) {
+    setText("st-tick", fmt(stream.t || live.tick));
+    setText("st-pop", flies.length);
+    setText("st-flying", flies.filter(f => f.mode === 1).length);
+    setText("st-epoch", fmt(Math.floor((stream.t || live.tick) / live.epochInterval)));
+    {
       const v = $("st-verify");
-      const vd = verdict(live);
+      const vd = verifierLine(live);
       let html;
       if (live.settling === false) html = `<b class="bad">SETTLEMENT PAUSED</b> operator out of gas`;
-      else if (behind > 2000) html = `<b>SYNCING</b> ${fmt(behind)} ticks behind`;
+      else if (stream.state === "lost") html = `<b class="bad">STREAM LOST</b> reconnecting`;
+      else if (stream.state === "stalled") html = `<b>STREAM STALLED</b> no frame for 3 s`;
+      else if (stream.state !== "live") html = `<b>CONNECTING</b>`;
       else if (vd) html = `<b class="${vd.cls}">${vd.word}</b> ${esc(vd.detail)}`;
-      else html = `<b>LIVE</b> awaiting the next epoch boundary`;
-      if (v.innerHTML !== html) v.innerHTML = html;
-    } else {
-      setText("st-cluster", "none (sandbox)");
-      const v = $("st-verify");
-      const html = `<b>SANDBOX</b> no world reachable`;
+      else html = `<b>LIVE</b> unverified: no verifier result posted`;
       if (v.innerHTML !== html) v.innerHTML = html;
     }
     if (frame % 30 === 1) {
-      if (dish.selected >= 0) describeSlot(dish.selected);
-      updateDishNow();
+      if (cage.selected >= 0) describe(cage.selected);
+      updateCageNow();
+      renderBrain();
     }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
-  function updateDishNow() {
-    const biome = world.biome();
-    const counts = new Int32Array(8);
-    for (let i = 0; i < biome.length; i++) counts[biome[i]]++;
-    document.querySelectorAll("#biome-table tr[data-b]").forEach(tr => { tr.lastElementChild.textContent = fmt(counts[+tr.dataset.b]); });
-    document.querySelectorAll("#death-table tr[data-c]").forEach(tr => { tr.lastElementChild.textContent = fmt(deaths.get(+tr.dataset.c) || 0); });
-    const light = sim.light_now(), temp = sim.temp_now() / 100;
-    $("dish-now").innerHTML =
-      `light ${light}/255 (${light > 128 ? "day" : "night"})<br>temperature ${temp.toFixed(2)} &deg;C<br>` +
-      `alive ${sim.pop_count()} &middot; capacity ${world.capacity()}<br>` +
-      `births ${fmt(sim.births_total())} &middot; deaths ${fmt(sim.deaths_total())} &middot; kills ${fmt(sim.kills_total())}<br>` +
-      `max generation ${sim.max_generation()}`;
+  function updateCageNow() {
+    document.querySelectorAll("#death-table tr[data-c]").forEach(tr => { tr.lastElementChild.textContent = fmt(deaths.get(tr.dataset.c) || 0); });
+    if (!stream.next) return;
+    const light = stream.light, temp = stream.temp / 100;
+    const flying = flies.filter(f => f.mode === 1).length;
+    $("cage-now").innerHTML =
+      `light ${light}/255 (${light > 128 ? "day" : "night"})<br>temperature ${temp.toFixed(2)} &deg;C at the centre<br>` +
+      `alive ${flies.length} &middot; flying ${flying} &middot; capacity ${live.capacity}<br>` +
+      `on the walls or the lid ${flies.filter(f => f.mode === 0 && f.s > 0).length} &middot; proboscis out ${flies.filter(f => f.pr > 0.5).length}`;
   }
 
   // ---- everything from the journal ----
   function renderJournal() {
-    if (!live) return;
     setText("st-cluster", live.cluster);
     setText("rc-cluster", live.cluster);
     $("rc-program").innerHTML = link("address", live.programId, live, 44);
     $("rc-world").innerHTML = link("address", live.worldPda, live, 44);
     $("rc-operator").innerHTML = link("address", live.operator, live, 44);
     setText("rc-seed", live.seed);
-    setText("rc-verified", `${live.verified} verified on chain, ${live.journalOnly} match the journal only, ${live.mismatched} diverged, ${live.lastCheckedEpoch} checked`);
-    const c = live.chain;
-    $("rc-chain").innerHTML = !c ? "not read yet"
-      : c.error ? `<span class="bad">unread</span>: ${esc(c.error)}`
-      : `epoch ${c.epoch} at tick ${fmt(c.tick)} \u00b7 last_state_hash ${esc(c.hash32)}`;
+    const vd = verifierLine(live);
+    $("rc-verified").innerHTML = vd
+      ? `<span class="${vd.cls === "ok" ? "chain-c" : "bad"}">${vd.word}</span> ${esc(vd.detail)}; epoch ${vd.epoch}, hash ${esc(vd.hash)}`
+      : `<span class="faint">no result posted</span>`;
     setText("ec-metab", sol(live.metabolism) + " SOL");
     setText("ec-pool", sol(live.pool) + " SOL");
     setText("ec-cap", live.capacity);
-    setText("ec-alive", (live.larvae || []).filter(l => l.status !== STATUS.DEAD).length);
+    setText("ec-alive", (live.flies || []).filter(l => l.status !== STATUS.DEAD).length);
     setText("ec-opbal", sol(live.operatorBalance) + " SOL");
     setText("ec-settling", live.settling === false ? "paused: operator out of gas" : `running${live.pendingOps ? `, ${live.pendingOps} pending` : ""}`);
-    const offers = (live.larvae || []).filter(l => l.status === STATUS.OFFERED).slice(0, 8);
+    const offers = (live.flies || []).filter(l => l.status === STATUS.OFFERED).slice(0, 8);
     $("offers-table").querySelector("tbody").innerHTML = offers.length
       ? offers.map(l => `<tr><td>#${l.id}</td><td>gen ${l.generation}</td><td class="n">${price(l.salePrice)} SOL</td></tr>`).join("")
       : `<tr><td class="faint">no newborn is offered right now; the next birth will be</td></tr>`;
     const eps = [...(live.epochs || [])].slice(-12).reverse();
+    const v = live.verifier;
     $("epoch-table").querySelector("tbody").innerHTML = eps.length
       ? eps.map(ep => {
-        const st = live.epochState.get(ep.epoch);
-        const state = !st ? (ep.tick > world.tick() ? "pending" : "before join")
-          : st.chain === true ? "verified" : st.chain === false || !st.journal ? "DIVERGED" : "matches journal";
-        const cls = state === "verified" ? "chain-c" : state === "DIVERGED" ? "bad" : "faint";
+        const checked = v && v.epoch === ep.epoch;
+        const state = checked ? (v.verdict === "VERIFIED" ? "verified" : "MISMATCH") : "posted";
+        const cls = state === "verified" ? "chain-c" : state === "MISMATCH" ? "bad" : "faint";
         return `<tr><td class="n">${ep.epoch}</td><td class="n">${fmt(ep.tick)}</td><td class="sig">${esc(ep.hash)}</td><td class="${cls}">${state}</td><td>${link("tx", ep.sig, live)}</td></tr>`;
       }).join("")
       : `<tr><td colspan="5" class="faint">no epoch has been posted yet</td></tr>`;
@@ -157,15 +168,14 @@ async function loadMeasurements() {
       : `<tr><td colspan="4" class="faint">no transaction yet</td></tr>`;
   }
   renderJournal();
-  if (live) {
-    setInterval(async () => {
-      const j = await pollJournal(world);
-      if (j && j.desynced) { location.reload(); return; }
-      renderJournal();
-    }, 4000);
-  }
+  setInterval(async () => {
+    const j = await fetchJournal(8000);
+    if (!j) return;
+    Object.assign(live, j);
+    renderJournal();
+  }, 4000);
   // headless verification: drive one frame without rAF
-  window.__instar = { world, dish, brain, frame: () => { world.pace(performance.now()); dish.render(1 / 60); } };
+  window.__instar = { cage, stream, brain, config, journal: live, frame: () => { flies = stream.sample(performance.now()); cage.render(flies, stream.light, 1 / 60); } };
 })().catch(e => {
   const v = document.getElementById("st-verify");
   if (v) v.innerHTML = `<b class="bad">FAILED</b> ${esc(e.message)}`;

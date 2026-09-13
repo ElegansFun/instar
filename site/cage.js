@@ -1,9 +1,10 @@
-// dish.html: the bench. Full-screen dish, HUD, dock windows, inspector,
-// account. Everything shown is read from the engine in this tab or from the
-// world's journal; the page never invents a number.
-import { boot, pollJournal, verdict, fillConstants, DEATH_CAUSE, API, SAME_ORIGIN_API } from "./engine.js";
-import { Dish3D } from "./dish3d.js";
-import { ROLE_COLOR } from "./brainmap.js";
+// cage.html: the bench. Full-screen cage, HUD, dock windows, inspector,
+// account. Everything shown is read from the world's stream or its journal;
+// the page never invents a number.
+import { boot, fetchJournal, verifierLine, verifyEpochHere, canVerifyHere, VERIFY_MEMORY_GB, fillConstants, DEATH_CAUSE, API, SAME_ORIGIN_API } from "./engine.js";
+import { Stream } from "./stream.js";
+import { Cage3D } from "./cage3d.js";
+import { mountBrainPanel } from "./brainmap.js";
 import { drawQR } from "./qr.js";
 import { session, setSession, post, explorerLink, sol, price, short, esc, fmt, STATUS, STATUS_NAME, LAMPORTS } from "./api.js";
 import { Program, loadIdl, identityDrift, rememberIdentity } from "./chain.js";
@@ -18,19 +19,20 @@ function setHud(id, v) {
   $(id).textContent = s;
 }
 const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.innerHTML = html; };
+const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wall", "lid"];
 
 (async function main() {
   const bootEl = $("boot");
-  const world = await boot({ status: (s) => { bootEl.textContent = s; } });
-  const { sim, census } = world;
-  const live = world.live;
-  const config = live ? live.config : {};
-  const src = () => live || config;
+  const { journal, config } = await boot({ status: (s) => { bootEl.textContent = s; } });
+  if (!journal) throw new Error(API ? "no world answers at " + API : "this page must be served by the world process (or given ?api= in dev)");
+  if (!config.arena) throw new Error("the world did not publish its arena");
+  const live = journal;
+  const src = () => live;
   const txLink = (sig, n = 8) => sig ? `<a class="chain" href="${esc(explorerLink("tx", sig, src()))}" target="_blank" rel="noopener">${esc(short(sig, n))}</a>` : "";
   const addrLink = (a, n = 4) => a ? `<a class="chain" href="${esc(explorerLink("address", a, src()))}" target="_blank" rel="noopener">${esc(short(a, n))}</a>` : "\u2014";
-  const isMainnet = () => (live ? live.cluster : config.cluster) === "mainnet-beta";
+  const isMainnet = () => live.cluster === "mainnet-beta";
   bootEl.classList.add("gone");
-  fillConstants(world);
+  fillConstants(config, journal);
   // The program and collection this browser first saw are remembered; a
   // world that names different ones since gets a red banner until the
   // visitor accepts the change, and wallet mode also refuses any program
@@ -45,7 +47,9 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     }
   }
 
-  const dish = new Dish3D($("dish"), world, { embedded: false, onSelect: onSelect });
+  const cage = new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: false, onSelect: onSelect });
+  const stream = new Stream({ onEvent: onStreamEvent, onState: () => {} });
+  let flies = [];
 
   // ---------- windows + dock ----------
   const winState = (() => { try { return JSON.parse(localStorage.getItem("instar_wins") || "{}"); } catch { return {}; } })();
@@ -61,6 +65,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     if (db) db.classList.toggle("on", !!st.open);
     saveWins();
     if (st.open) renderWindows();
+    if (id === "win-brain") watchBrain();
   }
   function initWin(id, defOpen) {
     const el = $(id);
@@ -91,10 +96,10 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       window.addEventListener("pointerup", up);
     });
     head.querySelector("[data-min]").addEventListener("click", () => {
-      if (id === "win-inspect") dish.select(-1); else toggleWin(id, false);
+      if (id === "win-inspect") cage.select(-1); else toggleWin(id, false);
     });
   }
-  const WINS = ["win-market", "win-larvae", "win-mine", "win-activity", "win-brain", "win-account"];
+  const WINS = ["win-market", "win-flies", "win-mine", "win-activity", "win-brain", "win-account"];
   WINS.forEach(id => initWin(id, id === "win-market" && window.innerWidth > 900));
   initWin("win-inspect", false);
   winState["win-inspect"].open = false; $("win-inspect").classList.remove("open");
@@ -104,30 +109,31 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   });
 
   // ---------- activity feed ----------
-  const plateFeed = [];
-  function pushPlate(html) {
-    plateFeed.unshift(html);
-    plateFeed.length = Math.min(plateFeed.length, 40);
-    if (winState["win-activity"]?.open) setHtml("a-events", plateFeed.map(h => `<div class="row"><span class="g">${h}</span></div>`).join(""));
+  const cageFeed = [];
+  function pushCage(html) {
+    cageFeed.unshift(html);
+    cageFeed.length = Math.min(cageFeed.length, 40);
+    if (winState["win-activity"]?.open) setHtml("a-events", cageFeed.map(h => `<div class="row"><span class="g">${h}</span></div>`).join(""));
   }
-  const EVENT_LABEL = { 3: "flood: pools widen for 1,200 ticks", 4: "yeast bloom", 5: "dry spell: food quartered, moisture down" };
-  world.onEvent((ev) => {
-    if (ev.tick < world.joinedAt) return; // history, not news
+  const EVENT_LABEL = { lights_off: "lights off", bloom: "yeast bloom", dry_spell: "dry spell: food quartered, humidity down", mature: "mature", takeoff: "takeoff", landing: "landing" };
+  let joinedAt = -1;
+  function onStreamEvent(ev) {
+    if (joinedAt < 0) joinedAt = ev.tick;
+    const who = ev.uid !== undefined && ev.uid !== null && ev.uid >= 0 ? `#${ev.uid}` : "";
     let msg;
-    if (ev.kind === 1) msg = `<b>birth</b> #${ev.uid}${ev.b === 0xff ? " (founder)" : ` of #${world.uids()[ev.b]}`} \u00b7 tick ${fmt(ev.tick)}`;
-    else if (ev.kind === 2) msg = `<b>death</b> #${ev.uid} \u00b7 ${DEATH_CAUSE[ev.b] || "?"} \u00b7 tick ${fmt(ev.tick)}`;
-    else if (ev.kind === 6) msg = `<b>molt</b> #${ev.uid} \u00b7 tick ${fmt(ev.tick)}`;
-    else if (ev.kind === 4) msg = `<b>${EVENT_LABEL[4]}</b> at ${ev.a},${ev.b} \u00b7 tick ${fmt(ev.tick)}`;
-    else msg = `<b>${EVENT_LABEL[ev.kind] || "event " + ev.kind}</b> \u00b7 tick ${fmt(ev.tick)}`;
-    pushPlate(msg);
-  });
+    if (ev.name === "birth") msg = `<b>birth</b> ${who} \u00b7 tick ${fmt(ev.tick)}`;
+    else if (ev.name === "death") msg = `<b>death</b> ${who} \u00b7 ${esc(ev.cause || DEATH_CAUSE[ev.b] || "?")} \u00b7 tick ${fmt(ev.tick)}`;
+    else if (ev.name === "landing") msg = `<b>landing</b> ${who} on the ${SURFACE_NAME[ev.b] || "cage"} \u00b7 tick ${fmt(ev.tick)}`;
+    else msg = `<b>${esc(EVENT_LABEL[ev.name] || ev.name || "event " + ev.kind)}</b> ${who} \u00b7 tick ${fmt(ev.tick)}`;
+    pushCage(msg);
+  }
   const chainFeed = [];
   function pushChain(html) {
     chainFeed.unshift(html);
     chainFeed.length = Math.min(chainFeed.length, 12);
   }
 
-  // ---------- market / larvae / mine / activity ----------
+  // ---------- market / flies / mine / activity ----------
   let me = null;
   // Who is acting: the custodial session's wallet, or in wallet mode the
   // connected wallet. Every "yours" test on the page goes through myAddr().
@@ -137,10 +143,11 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   let walletBal = { balance: 0n, credit: 0n };
   const walletMode = () => acctMode === "wallet";
   const myAddr = () => walletMode() ? (wallet ? wallet.address : null) : (session ? session.wallet : null);
-  const larvaOf = (uid) => live && live.larvae ? live.larvae.find(l => l.id === uid) : null;
+  const records = () => live.flies || [];
+  const flyOf = (uid) => records().find(l => l.id === uid);
   const keeperName = (pk) => !pk ? "\u2014" : pk === myAddr() ? "you" : short(pk);
   // lineageNames values are records {name, by, handle, tick}
-  const lineageName = (lin) => { const r = live && live.lineageNames ? live.lineageNames[lin] : null; return r ? (typeof r === "string" ? r : r.name) : undefined; };
+  const lineageName = (lin) => { const r = live.lineageNames ? live.lineageNames[lin] : null; return r ? (typeof r === "string" ? r : r.name) : undefined; };
   const hasParent = (l) => l.parentId !== undefined && l.parentId !== null && l.parentId !== -1 && l.parentId !== "none";
   function statusBadge(l) {
     if (l.status === STATUS.OFFERED) return `<span class="badge sale">offered</span>`;
@@ -189,7 +196,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   async function walletAct(kind, body, okMsg, btn, say) {
     if (!wallet || !wallet.address || !program) { say("err", "connect your wallet first (Account)"); toggleWin("win-account", true); return; }
     const who = wallet.address;
-    const rec = body.id !== undefined ? larvaOf(body.id) : null;
+    const rec = body.id !== undefined ? flyOf(body.id) : null;
     if (body.id !== undefined && !rec) { say("err", `#${body.id} is not on the record yet`); return; }
     let ix, settled = null, landed = null;
     try {
@@ -227,18 +234,18 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     updateInspector(true);
   }
   // The world re-reads the chain every few seconds; keep polling the journal
-  // until this larva's record shows the change, or give up after `tries`
+  // until this fly's record shows the change, or give up after `tries`
   // polls two seconds apart (15 = 30 s).
   async function untilJournal(id, pred, tries = 15) {
     for (let i = 0; i < tries; i++) {
       await new Promise(r => setTimeout(r, 2000));
       await poll();
-      const l = larvaOf(id);
+      const l = flyOf(id);
       if (l && pred(l)) return true;
     }
     return false;
   }
-  const idBtn = (id) => `<button class="id" data-sel="${id}" aria-label="inspect larva ${id}">#${id}</button>`;
+  const idBtn = (id) => `<button class="id" data-sel="${id}" aria-label="inspect fly ${id}">#${id}</button>`;
   const buyBtn = (l, kind, label) => `<button data-${kind}="${l.id}" data-price="${esc(l.salePrice)}">${label}</button>`;
   function row(l) {
     const p = l.status === STATUS.OFFERED || Number(l.salePrice) > 0 ? `${price(l.salePrice)} SOL` : "";
@@ -246,72 +253,57 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   }
   function renderMarket() {
     if (!winState["win-market"]?.open || inflight) return;
-    if (!live) {
-      setHtml("m-offers", `<div class="note">no world is reachable from this page, so there is no market; this is a local sandbox</div>`);
-      setHtml("m-resale", "");
-      return;
-    }
     setHud("m-cluster", live.cluster);
     setHud("m-metab", sol(live.metabolism) + " SOL");
     setHud("m-pool", sol(live.pool) + " SOL");
     setHud("m-cap", live.capacity);
     setHud("m-settling", live.settling === false ? "paused: operator out of gas" : `running${live.pendingOps ? `, ${live.pendingOps} pending` : ""}`);
-    const offers = (live.larvae || []).filter(l => l.status === STATUS.OFFERED);
+    const offers = records().filter(l => l.status === STATUS.OFFERED);
     setHtml("m-offers", offers.length
       ? offers.map(l => `<div class="row">${idBtn(l.id)}<span class="g">gen ${l.generation}</span><span class="v">${price(l.salePrice)} SOL</span>${buyBtn(l, "buy", "Buy")}</div>`).join("")
       : `<div class="note">no newborn is offered right now; the next birth will be</div>`);
-    const resale = (live.larvae || []).filter(l => l.status === STATUS.OWNED && Number(l.salePrice) > 0);
+    const resale = records().filter(l => l.status === STATUS.OWNED && Number(l.salePrice) > 0);
     setHtml("m-resale", resale.length
       ? resale.map(l => `<div class="row">${idBtn(l.id)}<span class="g">gen ${l.generation} \u00b7 vault ${sol(l.vault)} \u00b7 ${keeperName(l.keeper)}</span><span class="v">${price(l.salePrice)} SOL</span>${l.keeper === myAddr() ? "" : buyBtn(l, "buylisted", "Buy")}</div>`).join("")
       : `<div class="note">nothing listed by a keeper</div>`);
   }
-  function renderLarvae() {
-    if (!winState["win-larvae"]?.open) return;
-    if (!live) {
-      const alive = world.alive(), uids = world.uids(), gens = world.generations(), en = world.energy();
-      let html = "", n = 0;
-      for (let i = 0; i < world.MAXP; i++) if (alive[i]) { n++; html += `<div class="row"><button class="id" data-slot="${i}" aria-label="inspect larva ${uids[i]}">#${uids[i]}</button><span class="g">gen ${gens[i]} \u00b7 energy ${fmt(en[i])}</span></div>`; }
-      setHud("l-summary", `${n} alive in this sandbox; nothing here is on a chain`);
-      setHtml("l-list", html);
-      return;
-    }
-    const all = live.larvae || [];
+  function renderFlies() {
+    if (!winState["win-flies"]?.open) return;
+    const all = records();
     const living = all.filter(l => l.status !== STATUS.DEAD).sort((a, b) => Number(b.vault) - Number(a.vault) || a.id - b.id);
     const dead = all.filter(l => l.status === STATUS.DEAD).sort((a, b) => b.id - a.id).slice(0, 20);
-    setHud("l-summary", `${living.length} on chain and alive \u00b7 ${living.filter(l => l.status === STATUS.OFFERED || Number(l.salePrice) > 0).length} for sale \u00b7 ${all.length - living.length} settled`);
+    const flying = flies.filter(f => f.mode === 1).length;
+    setHud("l-summary", `${living.length} on chain and alive \u00b7 ${flies.length} in the cage, ${flying} flying \u00b7 ${living.filter(l => l.status === STATUS.OFFERED || Number(l.salePrice) > 0).length} for sale \u00b7 ${all.length - living.length} settled`);
     setHtml("l-list", living.map(row).join("") + (dead.length ? `<h4>settled</h4>` + dead.map(row).join("") : ""));
   }
   function renderMine() {
     if (!winState["win-mine"]?.open) return;
-    if (!live) { setHtml("mine-body", `<div class="note">no world is reachable; there is nothing to keep in a sandbox</div>`); return; }
     const who = myAddr();
-    if (!who || (!walletMode() && !me)) { setHtml("mine-body", `<div class="note">${walletMode() ? "connect your wallet" : "sign in"} to see the larvae you keep</div>`); return; }
-    const mine = (live.larvae || []).filter(l => l.keeper === who && l.status === STATUS.OWNED);
+    if (!who || (!walletMode() && !me)) { setHtml("mine-body", `<div class="note">${walletMode() ? "connect your wallet" : "sign in"} to see the flies you keep</div>`); return; }
+    const mine = records().filter(l => l.keeper === who && l.status === STATUS.OWNED);
     const vaults = mine.reduce((a, l) => a + Number(l.vault), 0);
     const balance = walletMode() ? walletBal.balance : me.balance;
     setHtml("mine-body",
       `<div class="kv2"><span>balance</span><span>${sol(balance)} SOL</span><span>keeping</span><span>${mine.length}</span><span>in vaults</span><span>${sol(vaults)} SOL</span></div>` +
-      (mine.length ? `<h4>yours</h4>` + mine.map(row).join("") : `<div class="note" style="margin-top:8px">you keep no larva yet; newborns are in the Market window</div>`));
+      (mine.length ? `<h4>yours</h4>` + mine.map(row).join("") : `<div class="note" style="margin-top:8px">you keep no fly yet; newborns are in the Market window</div>`));
   }
   const TX_LABEL = { birth: "birth registered", offer: "offered", buy: "bought", buylisted: "resold", list: "listed", unlist: "unlisted", transfer: "transferred", reward: "pool rewards", death: "death settled", cull: "culled", epoch: "epoch posted", heartbeat: "heartbeat", fund: "funded", withdraw: "withdrawn", airdrop: "airdrop" };
   const ago = (t) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 90 ? `${s.toFixed(0)}s` : s < 5400 ? `${(s / 60).toFixed(0)}m` : s < 129600 ? `${(s / 3600).toFixed(0)}h` : `${(s / 86400).toFixed(0)}d`; };
   function renderActivity() {
     if (!winState["win-activity"]?.open) return;
-    setHtml("a-events", plateFeed.length ? plateFeed.map(h => `<div class="row"><span class="g">${h}</span></div>`).join("") : `<div class="note">nothing has happened since you joined</div>`);
-    if (!live) { setHtml("a-tx", `<div class="note">no chain in a sandbox</div>`); return; }
+    setHtml("a-events", cageFeed.length ? cageFeed.map(h => `<div class="row"><span class="g">${h}</span></div>`).join("") : `<div class="note">nothing has happened since you joined</div>`);
     const rows = [...(live.txlog || [])].reverse().slice(0, 40);
     setHtml("a-tx", (chainFeed.length ? chainFeed.map(h => `<div class="row"><span class="g">${h}</span></div>`).join("") : "") +
       (rows.length ? rows.map(r => `<div class="row">${r.id !== undefined && r.id !== null ? idBtn(r.id) : `<span class="id"></span>`}<span class="g">${esc(TX_LABEL[r.kind] || r.kind)}${r.ok === false ? " (failed)" : ""}</span><span class="v">${txLink(r.sig)} ${ago(r.t)}</span></div>`).join("")
         : `<div class="note">no transaction yet</div>`));
+    renderVerification();
   }
-  function renderWindows() { renderMarket(); renderLarvae(); renderMine(); renderActivity(); renderBrain(); }
+  function renderWindows() { renderMarket(); renderFlies(); renderMine(); renderActivity(); renderBrain(); }
   // Every control in a window or the inspector goes through this one handler,
   // so re-rendering a row or the action strip never stacks listeners.
   document.body.addEventListener("click", (ev) => {
     const sel = ev.target.closest("[data-sel]");
     if (sel) { selectUid(+sel.dataset.sel); return; }
-    const slot = ev.target.closest("[data-slot]");
-    if (slot) { dish.select(+slot.dataset.slot); return; }
     const buy = ev.target.closest("[data-buy]");
     if (buy) { act("buy", { id: +buy.dataset.buy, lamports: buy.dataset.price }, `bought #${buy.dataset.buy}`, buy); return; }
     const bl = ev.target.closest("[data-buylisted]");
@@ -320,79 +312,115 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     if (a) inspectorAction(a.dataset.act, +a.dataset.id, a);
   });
   function selectUid(uid) {
-    const slot = world.slotOfUid(uid);
-    if (slot < 0) { $("i-msg").className = "msg act-msg"; $("i-msg").textContent = `#${uid} is not on the plate right now`; return; }
-    dish.select(slot);
+    if (!cage.flyById(uid)) { $("i-msg").className = "msg act-msg"; $("i-msg").textContent = `#${uid} is not in the cage right now`; return; }
+    cage.select(uid);
   }
 
-  // ---------- brain raster ----------
-  const rasterCv = $("brain-raster");
-  const rasterCtx = rasterCv.getContext("2d", { alpha: false });
-  const rank = (r) => (r >= 1 && r <= 11 ? 0 : r === 0 ? 1 : 2);
-  const brainOrder = census.nodes.map((n, i) => i).sort((a, b) => rank(world.roles[a]) - rank(world.roles[b]) || world.roles[a] - world.roles[b] || a - b);
-  $("b-legend").innerHTML = [[0, "unassigned"], [1, "olfactory"], [2, "gustatory ext."], [3, "gustatory phar."], [4, "mechano"], [5, "noci"], [6, "cold"], [7, "warm"], [8, "visual"], [9, "proprio"], [10, "gut"], [11, "resp."], [20, "DN left"], [21, "DN right"], [22, "DN unpaired"], [23, "DN-SEZ feeding"], [24, "ring gland"]]
-    .map(([r, n]) => `<span><i style="background:${ROLE_COLOR[r]}"></i>${n}</span>`).join("");
+  // ---------- verification ----------
+  // What this page can say: the CLI verifier's posted result, and, on a
+  // desktop, a replay of the next epoch after the world's snapshot here.
+  let verifying = false, verifyResult = null;
+  const verifyBtn = $("v-run");
+  verifyBtn.hidden = !canVerifyHere();
+  document.querySelectorAll('[data-n="vmem"]').forEach(el => { el.textContent = String(VERIFY_MEMORY_GB); });
+  function renderVerification() {
+    const v = verifierLine(live);
+    let html = v
+      ? `<b class="${v.cls}">${v.word}</b> ${esc(v.detail)}${v.sig ? " " + txLink(v.sig) : ""}`
+      : `no CLI verifier result has been posted to this world's journal; the epochs below are the operator's hashes, compared with nothing by this page`;
+    if (verifyResult) {
+      const r = verifyResult;
+      const chain = r.chain === true ? `<b class="ok">VERIFIED on chain</b> World.last_state_hash \u2026${esc(r.onChain)}` : r.chain === false ? `<b class="bad">DIVERGED from chain</b> chain \u2026${esc(r.onChain)}` : `chain not compared: ${esc(r.chainError)}`;
+      const jr = r.journal === true ? `matches the journal` : r.journal === false ? `<b class="bad">DIFFERS from the journal</b> (posted ${esc(r.posted.hash)})` : `epoch ${r.epoch} is not in the journal`;
+      html += `<br><b>this browser</b> replayed ${fmt(r.ticks)} ticks from the snapshot at tick ${fmt(r.snapshotTick)} to epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s: hash ${esc(r.local)}, ${jr}; ${chain}`;
+    }
+    setHtml("v-line", html);
+    const nextEpoch = live.epochs && live.epochs.length ? live.epochs[live.epochs.length - 1].epoch : null;
+    verifyBtn.textContent = verifying ? "verifying\u2026" : nextEpoch !== null ? `Verify epoch ${nextEpoch} in this browser` : "Verify the next epoch in this browser";
+    verifyBtn.disabled = verifying;
+  }
+  verifyBtn.addEventListener("click", async () => {
+    if (verifying) return;
+    if (!confirm(`This downloads the canonical graph (~82 MB) and the world's latest snapshot, allocates about ${VERIFY_MEMORY_GB} GB of memory in a worker, and replays up to one epoch of the world at engine speed. It can take several minutes. Continue?`)) return;
+    verifying = true; renderVerification();
+    const m = $("v-msg"); m.className = "msg"; m.textContent = "starting the worker";
+    try {
+      const fresh = await fetchJournal(8000);
+      if (fresh) Object.assign(live, { entries: fresh.entries, epochs: fresh.epochs });
+      verifyResult = await verifyEpochHere({ journal: live, config, status: (s) => { m.textContent = s; } });
+      m.className = "msg ok"; m.textContent = `done in ${(verifyResult.ms / 1000).toFixed(0)} s`;
+      pushChain(verifyResult.chain === true
+        ? `<b>epoch ${verifyResult.epoch} VERIFIED on chain by this browser</b> ${esc(verifyResult.local)}`
+        : verifyResult.chain === false || verifyResult.journal === false
+          ? `<b>epoch ${verifyResult.epoch} DIVERGED</b> local ${esc(verifyResult.local)}`
+          : `<b>epoch ${verifyResult.epoch} replayed here</b> ${esc(verifyResult.local)}, ${verifyResult.journal ? "matches the journal" : "not in the journal"}`);
+    } catch (e) {
+      m.className = "msg err"; m.textContent = e.message;
+    } finally {
+      verifying = false; renderVerification();
+    }
+  });
+
+  // ---------- brain window ----------
+  const brain = mountBrainPanel({ bars: $("brain-bars"), raster: $("brain-raster"), config });
+  let rasterInfo = null, rasterErr = null;
+  function watchBrain() {
+    const id = winState["win-brain"]?.open && cage.selected >= 0 ? cage.selected : -1;
+    brain.watch(id, (info, err) => { rasterInfo = info; rasterErr = err; });
+  }
   function renderBrain() {
     if (!winState["win-brain"]?.open) return;
-    const N = brainOrder.length;
-    const cols = 74, rows = Math.ceil(N / cols);
-    const cw = rasterCv.width / cols, ch = rasterCv.height / rows;
-    rasterCtx.fillStyle = "#F3EEE3";
-    rasterCtx.fillRect(0, 0, rasterCv.width, rasterCv.height);
-    if (dish.selected < 0) { setHud("b-summary", "select a larva to watch its neurons"); return; }
-    const fired = world.fired();
-    const base = dish.selected * world.MAXN;
-    let n = 0, ns = 0, nd = 0;
-    for (let k = 0; k < N; k++) {
-      const idx = brainOrder[k];
-      if (!fired[base + idx]) continue;
-      const r = world.roles[idx];
-      n++; if (r >= 1 && r <= 11) ns++; else if (r >= 20) nd++;
-      rasterCtx.fillStyle = ROLE_COLOR[r];
-      rasterCtx.fillRect((k % cols) * cw, ((k / cols) | 0) * ch, Math.max(1, cw - 1), Math.max(1, ch - 1));
-    }
-    setHud("b-summary", `#${world.uids()[dish.selected]} \u00b7 ${n} of ${N} fired this tick \u00b7 ${ns} sensory \u00b7 ${nd} descending / ring gland`);
+    const id = cage.selected;
+    const f = id >= 0 ? cage.flyById(id) : null;
+    if (!f) { setHud("b-summary", "select a fly to watch its neurons"); setHud("b-caption", `The raster samples every ${brain.stride}th neuron in canonical order: ${fmt(brain.sampled)} of ${fmt(brain.nodes)}, one ${brain.dot}\u00d7${brain.dot} dot each, drawn when that neuron fired at the world's latest tick. It is read from the world (/api/fly/:id/fired) four times a second while this window is open, so it lags the cage by up to a quarter second.`); brain.bars(null); return; }
+    brain.bars(f.fired);
+    const any = f.fired ? f.fired.any : undefined;
+    setHud("b-summary", `#${id} \u00b7 ${f.mode ? "flying" : "walking"} \u00b7 ${any !== undefined ? `${fmt(any)} of ${fmt(brain.nodes)} fired at tick ${fmt(stream.t)}` : `tick ${fmt(stream.t)}`}`);
+    setHud("b-caption", (rasterErr ? `raster: ${rasterErr}. ` : rasterInfo ? `${fmt(rasterInfo.lit)} of the ${fmt(rasterInfo.sampled)} sampled neurons fired. ` : "") +
+      `The raster samples every ${brain.stride}th neuron in canonical order: ${fmt(brain.sampled)} of ${fmt(brain.nodes)}, one ${brain.dot}\u00d7${brain.dot} dot each, drawn when that neuron fired at the world's latest tick. It is read from the world (/api/fly/${id}/fired) four times a second while this window is open, so it lags the cage by up to a quarter second.`);
   }
 
   // ---------- inspector ----------
-  const baseWeights = census.edges.map(e => e.weight);
   let inspKey = "";
-  function onSelect(slot) {
+  function onSelect(id) {
     const w = $("win-inspect");
-    if (slot < 0) { w.classList.remove("open"); inspKey = ""; return; }
+    watchBrain();
+    if (id < 0) { w.classList.remove("open"); inspKey = ""; return; }
     w.classList.add("open"); w.style.zIndex = String(++winZ);
     $("i-msg").textContent = "";
     updateInspector(true);
   }
   function updateInspector(force = false) {
-    const slot = dish.selected;
-    if (slot < 0) return;
-    if (!world.alive()[slot]) { dish.select(-1); return; }
-    const uid = world.uids()[slot];
-    const gen = world.generations()[slot], age = world.ages()[slot], en = world.energy()[slot], ecd = world.ecdysone()[slot], lin = world.lineages()[slot], eaten = world.eaten()[slot];
-    const genome = world.genome(slot);
-    let mutated = 0;
-    for (let e = 0; e < baseWeights.length; e++) if (genome[e] !== baseWeights[e]) mutated++;
-    const rec = larvaOf(uid);
-    const name = lineageName(lin);
+    const uid = cage.selected;
+    if (uid < 0) return;
+    const f = cage.flyById(uid);
+    if (!f) { cage.select(-1); return; }
+    const latest = stream.latest(uid) || f;
+    const rec = flyOf(uid);
+    const lin = latest.lin;
+    const name = lin !== undefined ? lineageName(lin) : undefined;
     const parent = rec && hasParent(rec) ? ` of #${rec.parentId}` : "";
-    setHud("i-title", `Larva #${uid}${live ? "" : " (sandbox)"}`);
+    setHud("i-title", `Fly #${uid}`);
+    const fired = latest.fired || {};
     setHtml("i-kv",
-      `<span>generation</span><span>${gen}${parent}</span>` +
-      `<span>lineage</span><span>${lin}${name ? ` \u201c${esc(name)}\u201d` : ""}</span>` +
-      `<span>age</span><span>${fmt(age)} ticks</span>` +
-      `<span>energy</span><span>${fmt(en)}</span>` +
-      `<span>ecdysone</span><span>${fmt(ecd)}</span>` +
-      `<span>eaten</span><span>${fmt(eaten)}</span>` +
-      `<span>genome</span><span>${mutated === 0 ? "identical to the census weights" : `${fmt(mutated)} of ${fmt(baseWeights.length)} weights differ from the census`}</span>` +
+      `<span>generation</span><span>${rec ? rec.generation + parent : "\u2014"}</span>` +
+      (lin !== undefined ? `<span>lineage</span><span>${lin}${name ? ` \u201c${esc(name)}\u201d` : ""}</span>` : "") +
+      (latest.age !== undefined ? `<span>age</span><span>${fmt(latest.age)} ticks</span>` : rec && rec.birthTick !== undefined ? `<span>born</span><span>tick ${fmt(rec.birthTick)}</span>` : "") +
+      `<span>energy</span><span>${fmt(latest.e)}</span>` +
+      `<span>mode</span><span>${latest.mode ? "flying" : `walking on the ${SURFACE_NAME[latest.s] || "cage"}`}</span>` +
+      `<span>altitude</span><span>${latest.z.toFixed(1)} of ${config.arena.layers} layers</span>` +
+      `<span>position</span><span>${latest.x.toFixed(0)}, ${latest.y.toFixed(0)} \u00b7 heading ${((latest.h * 180 / Math.PI + 360) % 360).toFixed(0)}\u00b0${latest.mode ? ` \u00b7 pitch ${(latest.p * 180 / Math.PI).toFixed(0)}\u00b0` : ""}</span>` +
+      `<span>proboscis</span><span>${(latest.pr * 100).toFixed(0)}% extended</span>` +
+      `<span>fired</span><span>${fired.any !== undefined ? fmt(fired.any) + " neurons" : "\u2014"} \u00b7 sensory ${fmt(fired.sens)} \u00b7 DN ${fmt(fired.dn)} \u00b7 legs ${fmt((fired.legL || 0) + (fired.legR || 0))} \u00b7 wings ${fmt((fired.wingP || 0) + (fired.wingS || 0))}</span>` +
       (rec ? `<span>keeper</span><span>${rec.keeper ? addrLink(rec.keeper) + (rec.keeper === myAddr() ? " (you)" : "") : "none"}</span>` +
         (rec.asset ? `<span>NFT</span><span>${addrLink(rec.asset)}</span>` : "") +
+        (rec.genomeHash ? `<span>genome</span><span>${esc(String(rec.genomeHash))}</span>` : "") +
         `<span>vault</span><span>${sol(rec.vault)} SOL</span>` +
         `<span>status</span><span>${STATUS_NAME[rec.status]}${rec.pendingCull ? ", cull requested" : ""}</span>` +
         (Number(rec.salePrice) > 0 ? `<span>price</span><span>${price(rec.salePrice)} SOL</span>` : "")
-        : (live ? `<span>chain</span><span>registration pending</span>` : "")));
+        : `<span>chain</span><span>registration pending</span>`));
     const art = $("i-art");
-    if (live) { const s = `${API}/api/larva/${uid}.svg`; if (art.getAttribute("src") !== s) art.src = s; art.hidden = false; } else art.hidden = true;
+    { const s = `${API}/api/fly/${uid}.svg`; if (art.getAttribute("src") !== s) art.src = s; art.hidden = false; }
     const mine = rec && rec.keeper === myAddr() && rec.status === STATUS.OWNED;
     const key = rec ? `${uid}:${rec.status}:${rec.salePrice}:${rec.pendingCull}:${mine}:${acctMode}` : `${uid}:none`;
     if (!force && key === inspKey) return;
@@ -411,8 +439,8 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
           : `<input id="iv-price" placeholder="SOL" aria-label="listing price in SOL" inputmode="decimal"><button data-act="list" data-id="${uid}">List</button>`) +
           `<input id="iv-to" placeholder="to address" aria-label="transfer to this Solana address" style="width:150px"><button data-act="transfer" data-id="${uid}">Transfer</button>` +
           (walletMode()
-            ? (rec.pendingCull ? "" : `<button data-act="cull" data-id="${uid}" class="quiet" title="ask the world to end this larva; 85% of its vault becomes your credit">Request cull</button>`)
-            : `<input id="iv-name" placeholder="name lineage ${lin}" aria-label="name for lineage ${lin}" maxlength="32"><button data-act="name" data-id="${uid}" class="quiet">Name</button>`);
+            ? (rec.pendingCull ? "" : `<button data-act="cull" data-id="${uid}" class="quiet" title="ask the world to end this fly; 85% of its vault becomes your credit">Request cull</button>`)
+            : `<input id="iv-name" placeholder="name its lineage" aria-label="name for this fly's lineage" maxlength="32"><button data-act="name" data-id="${uid}" class="quiet">Name</button>`);
       }
     }
     setHtml("i-market", actions ? `<div class="actions">${actions}</div>` : "");
@@ -445,7 +473,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   // ---------- account ----------
   const msg = (id, text, cls = "") => { const m = $(id); m.className = "msg " + cls; m.textContent = text; };
   async function refreshMe() {
-    if (!session || !live) return;
+    if (!session) return;
     try {
       me = await post("/api/me", {});
       session.wallet = me.wallet; if (me.name) session.name = me.name; setSession(session);
@@ -485,18 +513,16 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   let programLoading = null;
   function ensureProgram() {
     if (program) return Promise.resolve(program);
-    if (!live) return Promise.reject(new Error("no world is reachable from this page, so there is nothing to sign"));
     return programLoading ??= loadIdl().then(idl => (program = new Program(idl, config))).catch(e => { programLoading = null; throw e; });
   }
   function renderWallet() {
-    if (!live) { $("wal-out").hidden = false; $("wal-in").hidden = true; setHtml("wal-list", ""); msg("wal-msg", "no world is reachable from this page", "err"); return; }
     const on = !!(wallet && wallet.address);
     $("wal-out").hidden = on;
     $("wal-in").hidden = !on;
     if (on) {
       setHud("wal-name", wallet.name);
       setHud("wal-addr", wallet.address);
-      setHud("wal-owned", (live.larvae || []).filter(l => l.keeper === wallet.address && l.status === STATUS.OWNED).length);
+      setHud("wal-owned", records().filter(l => l.keeper === wallet.address && l.status === STATUS.OWNED).length);
       setHud("wal-rpc", (program && program.endpoints[0]) || config.rpc || "the RPC");
       $("wal-scan").href = explorerLink("address", wallet.address, live);
       return;
@@ -558,7 +584,6 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   async function auth(create) {
     const user = $("acct-user").value.trim(), pin = $("acct-pin").value;
     if (!user || !pin) { msg("acct-msg", "name and pin are both needed", "err"); return; }
-    if (!live) { msg("acct-msg", "no world is reachable from this page", "err"); return; }
     if (!SAME_ORIGIN_API) { msg("acct-msg", "sign in on the world's own address; this page will not send a PIN elsewhere", "err"); return; }
     msg("acct-msg", create ? "creating\u2026" : "signing in\u2026");
     try {
@@ -629,41 +654,54 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     document.head.appendChild(s);
   }
   renderAcct();
-  if (live) setInterval(() => { refreshMe(); refreshWallet(); }, 15000);
+  setInterval(() => { refreshMe(); refreshWallet(); }, 15000);
 
   // ---------- first person ----------
   const fpBtn = $("btn-fp"), hint = $("hint"), crosshair = $("crosshair");
-  fpBtn.addEventListener("click", () => dish.toggleFirstPerson());
-  dish.onFpChange = (on) => {
-    fpBtn.textContent = on ? "Leave the agar" : "On the agar";
-    crosshair.style.display = on && dish.fp.mode === "locked" ? "block" : "none";
+  fpBtn.addEventListener("click", () => cage.toggleFirstPerson());
+  cage.onFpChange = (on) => {
+    fpBtn.textContent = on ? "Leave the glass" : "On the glass";
+    crosshair.style.display = on && cage.fp.mode === "locked" ? "block" : "none";
     hint.textContent = on
-      ? (dish.fp.mode === "locked" ? "WASD to crawl \u00b7 mouse to look \u00b7 shift to hurry \u00b7 click to inspect \u00b7 esc to leave" : "WASD to crawl \u00b7 hold the mouse to look \u00b7 esc to leave")
-      : "drag to orbit \u00b7 wheel to zoom \u00b7 click a larva to inspect \u00b7 double-click to follow it";
+      ? (cage.fp.mode === "locked" ? "A/D to crawl along the pane, W/S to climb \u00b7 mouse to look \u00b7 shift to hurry \u00b7 click to inspect \u00b7 esc to leave" : "A/D to crawl along the pane, W/S to climb \u00b7 hold the mouse to look \u00b7 esc to leave")
+      : "drag to orbit \u00b7 wheel to zoom \u00b7 click a fly to inspect \u00b7 double-click to follow it";
   };
 
   // ---------- journal poll ----------
+  const entryKey = (e) => `${e.type}:${e.tick}:${e.uid ?? e.value ?? e.n ?? ""}`;
+  const seenEntries = new Set(live.entries.map(entryKey));
   async function poll() {
-    if (!live) return;
-    const j = await pollJournal(world, (e) => {
-      if (e.type === "cap") pushPlate(`<b>capacity</b> becomes ${e.value} at tick ${fmt(e.tick)}`);
-      else if (e.type === "cull") pushPlate(`<b>cull ordered</b> #${e.uid} at tick ${fmt(e.tick)}`);
-      else if (e.type === "provision") pushPlate(`<b>provisioned</b> #${e.uid} at tick ${fmt(e.tick)}`);
-      else if (e.type === "gen") pushPlate(`<b>founders</b> ${e.n} spawn at tick ${fmt(e.tick)}`);
-    }, (ep, st) => {
-      // called once when the journal is compared, again when the chain is read
-      if (st.chain === true) pushChain(`<b>epoch ${ep.epoch} VERIFIED on chain</b> World.last_state_hash \u2026${esc(st.onChain)} ${txLink(ep.sig)}`);
-      else if (st.chain === false) pushChain(`<b>epoch ${ep.epoch} DIVERGED from chain</b> local ${esc(st.local)} chain \u2026${esc(st.onChain)}`);
-      else if (st.journal) pushChain(`<b>epoch ${ep.epoch} matches the journal</b> ${esc(ep.hash.slice(0, 12))}\u2026; reading the chain ${txLink(ep.sig)}`);
-      else pushChain(`<b>epoch ${ep.epoch} DIVERGED from the journal</b> local ${esc(st.local.slice(0, 12))}\u2026 journal ${esc(ep.hash.slice(0, 12))}\u2026`);
-    });
-    if (j && j.desynced) { pushPlate("<b>mirror out of step with the journal; reloading</b>"); setTimeout(() => location.reload(), 1200); return; }
+    const j = await fetchJournal(8000);
+    if (!j) return;
+    for (const e of j.entries) {
+      const k = entryKey(e);
+      if (seenEntries.has(k)) continue;
+      seenEntries.add(k);
+      if (e.type === "cap") pushCage(`<b>capacity</b> becomes ${e.value} at tick ${fmt(e.tick)}`);
+      else if (e.type === "cull") pushCage(`<b>cull ordered</b> #${e.uid} at tick ${fmt(e.tick)}`);
+      else if (e.type === "provision") pushCage(`<b>provisioned</b> #${e.uid} at tick ${fmt(e.tick)}`);
+      else if (e.type === "gen") pushCage(`<b>founders</b> ${e.n} spawn at tick ${fmt(e.tick)}`);
+    }
+    const lastEpoch = live.epochs.length ? live.epochs[live.epochs.length - 1].epoch : -1;
+    for (const ep of j.epochs) if (ep.epoch > lastEpoch) pushChain(`<b>epoch ${ep.epoch} posted</b> ${esc(ep.hash.slice(0, 12))}\u2026 ${txLink(ep.sig)}`);
+    Object.assign(live, j);
     renderWindows();
     // the frame loop also refreshes the inspector, but a hidden tab has no
     // frames: a purchase or listing must show up on the next poll regardless
     updateInspector();
   }
-  if (live) { setInterval(poll, 3000); pushPlate(world.joinedAt ? `<b>joined</b> at tick ${fmt(world.joinedAt)} from the world's snapshot; verifying every epoch from here` : `<b>replaying</b> the world from genesis; every epoch will be checked`); }
+  setInterval(poll, 3000);
+  pushCage(`<b>joined</b> the world's stream at tick ${fmt(stream.t || live.tick)}`);
+
+  // a #fly=<id> in the address (the NFT's external_url) opens that fly
+  {
+    const m = location.hash.match(/fly=(\d+)/);
+    if (m) {
+      const want = +m[1];
+      const tryOpen = () => { if (cage.flyById(want)) { cage.select(want); cage.tracking = want; return true; } return false; };
+      const iv = setInterval(() => { if (tryOpen() || stream.frames > 30) clearInterval(iv); }, 200);
+    }
+  }
 
   // ---------- main loop ----------
   let frame = 0, lastT = performance.now();
@@ -671,38 +709,42 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
-    const behind = world.pace(now);
-    dish.render(dt);
+    flies = stream.sample(now);
+    cage.render(flies, stream.next ? stream.light : 255, dt);
     frame++;
-    setHud("h-tick", fmt(world.tick()));
-    setHud("h-epoch", fmt(world.epoch()));
-    setHud("h-pop", sim.pop_count());
-    setHud("h-cap", world.capacity());
-    const light = sim.light_now();
-    setHud("h-light", `${light > 128 ? "day" : "night"} ${light}`);
-    setHud("h-temp", (sim.temp_now() / 100).toFixed(1) + " \u00b0C");
-    if (frame % 60 === 1) setHud("h-hash", world.stateHash().slice(0, 12) + "\u2026");
+    setHud("h-tick", fmt(stream.t || live.tick));
+    setHud("h-epoch", fmt(Math.floor((stream.t || live.tick) / live.epochInterval)));
+    setHud("h-pop", flies.length);
+    setHud("h-cap", live.capacity);
+    let flying = 0;
+    for (const f of flies) if (f.mode === 1) flying++;
+    setHud("h-flying", flying);
+    const light = stream.light;
+    setHud("h-light", stream.next ? `${light > 128 ? "day" : "night"} ${light}` : "\u2014");
+    setHud("h-temp", stream.next ? (stream.temp / 100).toFixed(1) + " \u00b0C" : "\u2014");
+    if (frame % 30 === 1) setHud("lg-temp", stream.next ? `${((stream.temp - 300) / 100).toFixed(0)}\u2013${((stream.temp + 300) / 100).toFixed(0)} \u00b0C across the cage` : "\u2014");
     {
       let html;
-      const v = live && verdict(live);
-      if (!live) html = `<b>SANDBOX</b> no world reachable`;
-      else if (live.settling === false) html = `<b class="bad">SETTLEMENT PAUSED</b>`;
-      else if (behind > 2000) html = `<b class="warn">SYNCING</b> ${fmt(behind)} behind`;
+      const v = verifierLine(live);
+      if (live.settling === false) html = `<b class="bad">SETTLEMENT PAUSED</b>`;
+      else if (stream.state === "lost") html = `<b class="bad">STREAM LOST</b> reconnecting`;
+      else if (stream.state === "stalled") html = `<b class="warn">STREAM STALLED</b> no frame for 3 s`;
+      else if (stream.state !== "live") html = `<b class="warn">CONNECTING</b> to the stream`;
       else if (v) html = `<b class="${v.cls}">${v.word}</b> ${esc(v.detail)}`;
-      else html = `<b>LIVE</b> ${esc(live.cluster)}`;
+      else html = `<b>LIVE</b> ${esc(live.cluster)} \u00b7 unverified by this page`;
       setHtml("h-state", html);
     }
-    if (frame % 3 === 0) renderBrain();
+    if (frame % 6 === 0) renderBrain();
     if (frame % 10 === 2) updateInspector();
-    if (frame % 90 === 5 && !live) renderLarvae();
+    if (frame % 90 === 5) renderFlies();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
   // headless verification: drive one frame without rAF
-  window.__instar = { world, dish, frame: () => { world.pace(performance.now()); dish.render(1 / 60); } };
+  window.__instar = { cage, stream, config, journal: live, frame: () => { flies = stream.sample(performance.now()); cage.render(flies, stream.light, 1 / 60); } };
 })().catch(e => {
   const b = document.getElementById("boot");
   b.classList.remove("gone");
-  b.textContent = "the dish failed to load: " + e.message;
+  b.textContent = "the cage failed to load: " + e.message;
   console.error(e);
 });

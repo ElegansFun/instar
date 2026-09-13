@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY=' https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'none'; object-src 'none'">
-<title>Instar — the dish</title>
-<meta name="description" content="The live Instar dish: Drosophila first-instar larvae driven by the Winding et al. 2023 connectome, mirrored and verified in your browser, with the market and your account.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY=' https://accounts.google.com; worker-src 'self'; frame-src https://accounts.google.com; base-uri 'none'; object-src 'none'">
+<title>Instar — the cage</title>
+<meta name="description" content="The live Instar cage: adult Drosophila flies driven by every neuron of the Janelia MaleCNS connectome and every connection of five or more synapses, streamed from the world, with the market and your account.">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./styles.css">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 </head>
 <body class="bench">
 
-<div class="boot" id="boot">loading the census and the engine</div>
-<canvas id="dish" aria-label="the dish"></canvas>
+<div class="boot" id="boot">reading the world</div>
+<canvas id="cage" aria-label="the cage"></canvas>
 <div class="banner" id="identity-banner" hidden><span id="identity-text"></span> <button id="identity-accept">I expected this</button></div>
 
 <header class="hud">
@@ -21,9 +21,9 @@
   <span class="kv">tick <b id="h-tick">&mdash;</b></span>
   <span class="kv">epoch <b id="h-epoch">&mdash;</b></span>
   <span class="kv">alive <b id="h-pop">&mdash;</b> / <b id="h-cap">&mdash;</b></span>
+  <span class="kv">flying <b id="h-flying">&mdash;</b></span>
   <span class="kv">light <b id="h-light">&mdash;</b></span>
   <span class="kv">temp <b id="h-temp">&mdash;</b></span>
-  <span class="kv">hash <b id="h-hash">&mdash;</b></span>
   <span class="kv" id="h-state"><b>booting</b></span>
   <span class="spacer"></span>
   <a class="index" href="./">Monograph</a>
@@ -31,15 +31,19 @@
 
 <nav class="dock" id="dock">
   <button data-win="win-market">Market</button>
-  <button data-win="win-larvae">Larvae</button>
+  <button data-win="win-flies">Flies</button>
   <button data-win="win-mine">Mine</button>
   <button data-win="win-activity">Activity</button>
   <button data-win="win-brain">Brain</button>
   <button data-win="win-account">Account</button>
-  <span class="right"><button id="btn-fp">On the agar</button></span>
+  <span class="right"><button id="btn-fp">On the glass</button></span>
 </nav>
-<div class="hint" id="hint">drag to orbit &middot; wheel to zoom &middot; click a larva to inspect &middot; double-click to follow it</div>
+<div class="hint" id="hint">drag to orbit &middot; wheel to zoom &middot; click a fly to inspect &middot; double-click to follow it</div>
 <div class="crosshair" id="crosshair"></div>
+<div class="legend3d" id="legend3d">
+  <div class="row"><span>temperature</span><i class="temp"></i><span id="lg-temp">&mdash;</span></div>
+  <div class="row"><span>humidity</span><i class="hum"></i><span>water pool &rarr; salt corner</span></div>
+</div>
 
 <section class="win" id="win-market">
   <div class="win-head"><span class="t">Market</span><button data-min title="close">&times;</button></div>
@@ -61,8 +65,8 @@
   </div>
 </section>
 
-<section class="win" id="win-larvae">
-  <div class="win-head"><span class="t">Larvae</span><button data-min title="close">&times;</button></div>
+<section class="win" id="win-flies">
+  <div class="win-head"><span class="t">Flies</span><button data-min title="close">&times;</button></div>
   <div class="win-body">
     <div class="note" id="l-summary">&mdash;</div>
     <div id="l-list" class="stack"></div>
@@ -71,31 +75,37 @@
 
 <section class="win" id="win-mine">
   <div class="win-head"><span class="t">Mine</span><button data-min title="close">&times;</button></div>
-  <div class="win-body" id="mine-body"><div class="note">sign in to see the larvae you keep</div></div>
+  <div class="win-body" id="mine-body"><div class="note">sign in to see the flies you keep</div></div>
 </section>
 
 <section class="win" id="win-activity">
   <div class="win-head"><span class="t">Activity</span><button data-min title="close">&times;</button></div>
   <div class="win-body">
-    <h4>On the plate</h4>
+    <h4>In the cage</h4>
     <div id="a-events" class="stack"></div>
     <h4>On chain</h4>
     <div id="a-tx" class="stack"><div class="note">&mdash;</div></div>
+    <h4>Verification</h4>
+    <div class="note" id="v-line">&mdash;</div>
+    <div class="actions"><button id="v-run" hidden>Verify epoch in this browser</button></div>
+    <div class="msg" id="v-msg"></div>
+    <div class="note" id="v-caption">The CLI verifier (<span class="mono">scripts/verify-epoch.mts</span>) replays the world from its snapshot at native speed in Node and compares the epoch hash with the World account on chain; the operator can post its result to the journal, and that is what the line above reports. The button does the same replay here, in a Web Worker: it downloads the graph (~82 MB) and the snapshot (~0.7 GB uncompressed), needs about <span data-n="vmem">0.7</span> GB of memory, and takes minutes. A phone cannot do it, so the button is only offered on a desktop browser.</div>
   </div>
 </section>
 
 <section class="win" id="win-brain">
   <div class="win-head"><span class="t">Brain</span><button data-min title="close">&times;</button></div>
   <div class="win-body">
-    <div class="note" id="b-summary">select a larva to watch its neurons</div>
-    <canvas id="brain-raster" width="480" height="300"></canvas>
-    <div class="legend" id="b-legend"></div>
-    <div class="note">Every dot is one of the <span data-n="nodes">&mdash;</span> neurons of the selected animal, drawn when it fired this tick. Order: sensory, then unassigned brain neurons, then descending and ring-gland cells, so input sits at the top and output at the bottom.</div>
+    <div class="note" id="b-summary">select a fly to watch its neurons</div>
+    <canvas id="brain-bars" width="480" height="180"></canvas>
+    <div class="note">Neurons that fired at the world's last tick, by role group, as a share of the group's neurons (log scale, so one firing among twenty-four shows next to nine hundred among twelve thousand). Groups are the engine's, from Janelia's annotations.</div>
+    <canvas id="brain-raster" width="512" height="326"></canvas>
+    <div class="note" id="b-caption">&mdash;</div>
   </div>
 </section>
 
 <section class="win" id="win-inspect">
-  <div class="win-head"><span class="t" id="i-title">Larva</span><button data-min title="close">&times;</button></div>
+  <div class="win-head"><span class="t" id="i-title">Fly</span><button data-min title="close">&times;</button></div>
   <div class="win-body">
     <img class="art" id="i-art" alt="" hidden>
     <div class="kv2" id="i-kv"></div>
@@ -174,6 +184,6 @@
 </section>
 
 <script src="./vendor/web3.js"></script>
-<script type="module" src="./dish.js"></script>
+<script type="module" src="./cage.js"></script>
 </body>
 </html>

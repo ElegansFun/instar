@@ -1,11 +1,4 @@
 {
-  "items": [
-    { "label": "descending-neuron firings per larva-tick (DN-VNC, 182 neurons)", "value": "4.74", "unit": "", "horizon": "8,000 ticks, 8 founders, seed INSTA" },
-    { "label": "ticks spent feeding, real genome vs every synapse zeroed", "value": "14.7% vs 0.0%", "unit": "", "horizon": "8,000 ticks" },
-    { "label": "a dish of zeroed-genome larvae", "value": "extinct by tick 2,223", "unit": "", "horizon": "8,000 ticks" },
-    { "label": "the real line at the same horizon", "value": "7 alive, 17 births, generation 4", "unit": "", "horizon": "12,000 ticks" },
-    { "label": "time on a yeast or fruit patch, generation zero", "value": "0.5% (patches are 3.7% of the dish)", "unit": "", "horizon": "12,000 ticks" },
-    { "label": "engine cost at 40 larvae", "value": "1.54", "unit": "ms per tick", "horizon": "2,000 ticks, Node 24, one core" }
-  ],
-  "note": "Generation zero does not find food better than a random walk would; it eats because its descending neurons drive the pharynx when it is on food, and the zeroed line starves because they do not. Whether selection improves on that is what the dish is for. Re-measured on every build by scripts/sim-gates.mjs."
+  "items": [],
+  "note": "No measurement has been taken for this build of the adult engine. scripts/sim-gates.mjs writes this file when it runs the gates (motor-neuron firings per fly-tick, feeding and flight with the real genome against a zeroed one, persistence of the real line, ms per tick at 40 flies); until then the figure stays hidden rather than showing a number that was never measured."
 }
