@@ -41,6 +41,10 @@ export class OpQueue {
   /// rewards can never land again, so the world stops naming them for the chain.
   windingDown = false;
   operatorBalance = 0n;
+  /// When the head of the queue last moved (or the process started). A
+  /// queue that has held the same op past this for long is what /api/health
+  /// calls stuck; an empty queue is never stuck.
+  lastProgress = Date.now();
   private timer: NodeJS.Timeout | null = null;
   private readonly chain: Chain;
   private readonly engine: Engine;
@@ -58,6 +62,7 @@ export class OpQueue {
 
   get length() { return this.ops.length; }
   get cooling() { return Date.now() < this.rpcCooldownUntil; }
+  get stuckForMs() { return this.ops.length ? Date.now() - this.lastProgress : 0; }
 
   push(...ops: Op[]) {
     this.ops.push(...ops);
@@ -160,6 +165,8 @@ export class OpQueue {
       try { await this.classify(op, e); }
       catch (e2: any) { this.log(`op ${op.op} failed and could not be classified: ${String(e2?.message ?? e2).slice(0, 120)}`); }
     } finally {
+      // a retired, split or gap-filled head counts as movement too
+      if (this.ops[0] !== op) this.lastProgress = Date.now();
       this.busy = false;
     }
   }

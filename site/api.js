@@ -41,12 +41,14 @@ async function call(method, path, body) {
 export const post = (path, body = {}) => call("POST", path, body);
 
 // https://explorer.solana.com/{tx|address}/{x}?cluster=... ; the world tells
-// us the query so localnet (custom rpc) and devnet both link correctly.
+// us the query so localnet (custom rpc) and devnet both link correctly. The
+// host is fixed and the value is URL-encoded, so nothing served or returned
+// by a wallet can change where the link goes; callers still escape the href.
+const EXPLORER = "https://explorer.solana.com";
 export function explorerLink(kind, value, src) {
-  const base = (src && src.explorer) || "https://explorer.solana.com";
-  const q = (src && src.explorerQuery !== undefined) ? src.explorerQuery
-    : (src && src.cluster && src.cluster !== "mainnet-beta") ? "?cluster=" + src.cluster : "";
-  return `${base}/${kind}/${value}${q}`;
+  const q = (src && typeof src.explorerQuery === "string" && /^(\?[\w%.:=&-]*)?$/.test(src.explorerQuery)) ? src.explorerQuery
+    : (src && src.cluster && src.cluster !== "mainnet-beta") ? "?cluster=" + encodeURIComponent(src.cluster) : "";
+  return `${EXPLORER}/${kind}/${encodeURIComponent(String(value))}${q}`;
 }
 
 export const LAMPORTS = 1_000_000_000;

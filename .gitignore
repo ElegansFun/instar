@@ -19,3 +19,5 @@ data/raw/
 
 # the program keypair is a secret once deployed to a public cluster
 program/target/deploy/*-keypair.json
+
+backups/

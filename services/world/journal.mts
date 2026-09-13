@@ -112,19 +112,59 @@ export function readJsonWithBackup<T>(file: string, log: (l: string) => void): T
   }
 }
 
+export type LockHolder = { pid: number; startedAt: number; alive: boolean };
+
+/// The world process holds DATA_DIR/world.lock from before it reads a file
+/// until it exits cleanly, so a tool that would rewrite the record can tell a
+/// world that is still booting (replay precedes listen) from a stopped one:
+/// the TCP port says nothing for minutes, the lock says it from the start.
+/// A lock whose pid is dead is a crash's leftover, not a holder.
+export function lockHolder(dir: string): LockHolder | null {
+  let raw: { pid?: number; startedAt?: number };
+  try { raw = JSON.parse(fs.readFileSync(path.join(dir, "world.lock"), "utf8")); } catch { return null; }
+  const pid = Number(raw.pid);
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  let alive = false;
+  try { process.kill(pid, 0); alive = true; } catch (e: any) { alive = e?.code === "EPERM"; }
+  return { pid, startedAt: Number(raw.startedAt ?? 0), alive };
+}
+
+/// Remove the lock only when it is ours: a later world that took over a
+/// stale one must not have its lock removed by the crashed one's tail.
+export function releaseLock(dir: string) {
+  const file = path.join(dir, "world.lock");
+  try {
+    if (JSON.parse(fs.readFileSync(file, "utf8")).pid === process.pid) fs.unlinkSync(file);
+  } catch {
+    // no lock, or not ours
+  }
+}
+
 export class JournalStore {
   readonly path: string;
   readonly lockPath: string;
+  readonly dir: string;
   readonly journal: Journal;
   persistFailed = "";
   private readonly log: (l: string) => void;
 
   constructor(opts: JournalOpts) {
     fs.mkdirSync(opts.dir, { recursive: true });
+    this.dir = opts.dir;
     this.path = path.join(opts.dir, "journal.json");
     this.lockPath = path.join(opts.dir, "genesis.lock");
     this.log = opts.log;
+    // before anything is read: from here on this process will write the record back
+    const held = lockHolder(opts.dir);
+    if (held?.alive && held.pid !== process.pid) {
+      this.log(`WARNING: world.lock is held by pid ${held.pid} (alive, since ${new Date(held.startedAt).toISOString()}) — two worlds writing ${opts.dir} would destroy the record; taking it over`);
+    }
+    fs.writeFileSync(path.join(opts.dir, "world.lock"), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
     this.journal = this.load(opts);
+  }
+
+  releaseLock() {
+    releaseLock(this.dir);
   }
 
   private fresh(opts: JournalOpts): Journal {

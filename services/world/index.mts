@@ -11,15 +11,16 @@
 //
 //   npm run world
 
-import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { Chain, STATUS, formatSol, loadKeypair, parseSol, type Cluster, type CreatureView, type WorldView } from "../chain/solana.mts";
-import { Accounts } from "./accounts.mts";
-import { createServer } from "./api.mts";
+import { PublicKey } from "@solana/web3.js";
+import { CU, Chain, STATUS, formatSol, loadKeypair, parseSol, type Cluster, type CreatureView, type WorldView } from "../chain/solana.mts";
+import { FeeClaimer, withTimeout } from "../chain/fees.mts";
+import { Accounts, deriveMasterKey } from "./accounts.mts";
+import { createServer, type Boot } from "./api.mts";
 import { CAUSE_NAME, EVENT, Engine, NO_PARENT, hashHex, type Census } from "./engine.mts";
-import { JournalStore, writeAtomic, type Entry, type Op } from "./journal.mts";
+import { JournalStore, releaseLock, writeAtomic, type Entry, type Op } from "./journal.mts";
 import { OpQueue } from "./ops.mts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const CLUSTER = (process.env.INSTAR_CLUSTER ?? "localnet") as Cluster;
 const OPERATOR_KEYPAIR = process.env.INSTAR_OPERATOR_KEYPAIR ?? path.join(ROOT, ".keys", "operator.json");
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
+const ADMIN_TOKEN = process.env.INSTAR_ADMIN_TOKEN ?? "";
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 const GAS_RESERVE = parseSol(process.env.INSTAR_GAS_RESERVE ?? "0.05");
 
@@ -66,6 +68,8 @@ const HEARTBEAT_AFTER_S = 24 * 3600;
 const log = (line: string) => console.log(`[instar] ${line}`);
 
 type Ctx = Awaited<ReturnType<typeof buildWorld>>;
+/// bound before the world is built; /api/health reports the replay from it
+const boot: Boot = { ctx: null, tick: 0, target: 0 };
 
 async function buildWorld() {
   if (!["localnet", "devnet", "mainnet-beta"].includes(CLUSTER)) throw new Error(`INSTAR_CLUSTER must be localnet|devnet|mainnet-beta, not ${CLUSTER}`);
@@ -105,6 +109,7 @@ async function buildWorld() {
   });
   const journal = store.journal;
   const SNAP_PATH = path.join(DATA_DIR, "snapshot.bin");
+  boot.target = journal.tick;
 
   // ---------- identity (deterministic from the event stream) ----------
   // The engine numbers slots; the host names larvae. A uid is assigned to
@@ -179,19 +184,22 @@ async function buildWorld() {
     else if (e.type === "provision") engine.provision(e.uid);
   };
 
-  /// Step to `target`, draining events after every chunk and applying journal
-  /// entries at exactly their tick. This is THE replay rule; the mirror
-  /// follows the same one, and the epoch hash is read right after it returns.
+  /// One replay step: at most DRAIN_CHUNK ticks, never across a journal
+  /// entry, events drained after, entries applied at exactly their tick.
+  function stepChunk(t: number, target: number): number {
+    let stop = Math.min(target, t + DRAIN_CHUNK);
+    for (const e of journal.entries) if (e.tick > t && e.tick < stop) stop = e.tick;
+    engine.step(stop - t);
+    drainEvents();
+    for (const e of journal.entries) if (e.tick === stop) applyEntry(e);
+    return stop;
+  }
+
+  /// Step to `target`. This is THE replay rule; the mirror follows the same
+  /// one, and the epoch hash is read right after it returns.
   function advanceSim(target: number) {
     let t = engine.tick;
-    while (t < target) {
-      let stop = Math.min(target, t + DRAIN_CHUNK);
-      for (const e of journal.entries) if (e.tick > t && e.tick < stop) stop = e.tick;
-      engine.step(stop - t);
-      t = stop;
-      drainEvents();
-      for (const e of journal.entries) if (e.tick === t) applyEntry(e);
-    }
+    while (t < target) t = stepChunk(t, target);
     return t;
   }
 
@@ -212,14 +220,17 @@ async function buildWorld() {
     store.persist();
   }
 
+  function snapshotBytes(): Buffer {
+    const meta = Buffer.from(JSON.stringify({
+      magic: SNAP_MAGIC, cluster: CLUSTER, programId: chain.programId.toBase58(), era: journal.era, seed: journal.seed,
+      tick: engine.tick, slotUid, nextUid, eventSeq, lastEvHead,
+    }));
+    const len = Buffer.alloc(4); len.writeUInt32LE(meta.length, 0);
+    return Buffer.concat([len, meta, engine.snapshot()]);
+  }
   function saveSnapshot() {
     try {
-      const meta = Buffer.from(JSON.stringify({
-        magic: SNAP_MAGIC, cluster: CLUSTER, programId: chain.programId.toBase58(), era: journal.era, seed: journal.seed,
-        tick: engine.tick, slotUid, nextUid, eventSeq, lastEvHead,
-      }));
-      const len = Buffer.alloc(4); len.writeUInt32LE(meta.length, 0);
-      writeAtomic(SNAP_PATH, Buffer.concat([len, meta, engine.snapshot()]));
+      writeAtomic(SNAP_PATH, snapshotBytes());
     } catch (e) {
       log("snapshot save failed: " + String(e).slice(0, 120));
     }
@@ -249,7 +260,14 @@ async function buildWorld() {
     for (const e of journal.entries) if (e.tick === 0) applyEntry(e);
     drainEvents();
   }
-  advanceSim(journal.tick);
+  // The boot replay is the same rule as advanceSim, chunk by chunk, but it
+  // gives the event loop a turn every so often so the already-bound port can
+  // answer /api/health with `replaying` and how far along it is.
+  for (let t = engine.tick, n = 0; t < journal.tick; n++) {
+    t = stepChunk(t, journal.tick);
+    boot.tick = t;
+    if (n % 32 === 0) await new Promise<void>(r => setImmediate(r));
+  }
   let tick = engine.tick;
   log(`era ${journal.era} ${resumed ? "resumed" : "replayed"} to tick ${tick}, pop ${engine.popCount}, ${ops.length} op(s) queued`);
 
@@ -307,12 +325,7 @@ async function buildWorld() {
   }
 
   // ---------- custodial accounts ----------
-  // Without a master key the custody key is derived from the operator key,
-  // which is a hot key that gets rotated or leaks: either event would lock
-  // every keeper out. That is a localnet/devnet convenience only.
-  const masterKey = process.env.INSTAR_MASTER_KEY
-    ? Buffer.from(process.env.INSTAR_MASTER_KEY, "hex")
-    : crypto.createHash("sha256").update(Buffer.concat([operator.secretKey, Buffer.from("|instar-custody-v1")])).digest();
+  const masterKey = process.env.INSTAR_MASTER_KEY ? Buffer.from(process.env.INSTAR_MASTER_KEY, "hex") : deriveMasterKey(operator.secretKey);
   const accounts = new Accounts({ dir: DATA_DIR, masterKey, log });
 
   // ---------- chain cache ----------
@@ -444,8 +457,13 @@ async function buildWorld() {
     acc -= budget;
     if (budget <= 0) return;
     const boundary = (lastEpoch + 1) * EPOCH_INTERVAL;
+    // Seal exactly at the boundary tick: whatever of this budget lies past
+    // it is carried, not dropped, or every late interval that straddles a
+    // boundary would leave the world a little further behind the clock.
+    const target = Math.min(tick + budget, boundary);
+    acc += tick + budget - target;
     try {
-      tick = advanceSim(Math.min(tick + budget, boundary));
+      tick = advanceSim(target);
     } catch (e) {
       store.persist();
       console.error("[instar] FATAL:", e);
@@ -469,25 +487,44 @@ async function buildWorld() {
   }, 50);
 
   // ---------- fee income, fed into the world ----------
+  // With INSTAR_COIN_MINT set, the coin's creator-fee vaults are claimed into
+  // the fee keypair first; the sweep then moves everything above rent and
+  // the gas reserve into the world. A failed claim leaves the sweep to run
+  // on whatever is already there and is retried next interval.
   if (process.env.INSTAR_FEE_KEYPAIR) {
     const fee = loadKeypair(process.env.INSTAR_FEE_KEYPAIR);
-    log(`fee keypair ${fee.publicKey.toBase58()} — sweeping every ${SWEEP_INTERVAL_MS / 60000} min`);
-    let sweeping = false;
+    const claimer = process.env.INSTAR_COIN_MINT
+      ? new FeeClaimer({ chain, mint: new PublicKey(process.env.INSTAR_COIN_MINT), fee, log })
+      : null;
+    log(`fee keypair ${fee.publicKey.toBase58()} — ${claimer ? `claiming $INSTAR (${claimer.mint.toBase58()}) creator fees and ` : ""}sweeping every ${SWEEP_INTERVAL_MS / 60000} min`);
+    let sweeping: number | null = null;
     const sweep = async () => {
-      if (sweeping || ops.cooling) return;
-      sweeping = true;
+      if (sweeping !== null) { log(`fee sweep: the pass started ${Math.round((Date.now() - sweeping) / 1000)}s ago is still running, skipping this interval`); return; }
+      if (ops.cooling) return;
+      sweeping = Date.now();
       try {
-        const [bal, rent] = await Promise.all([chain.balance(fee.publicKey), chain.rentExempt(0)]);
-        const spare = bal - rent - GAS_RESERVE;
+        if (claimer) {
+          try {
+            // a null signature means the vault was drained by someone else's
+            // crank before ours landed: the money arrived, but no transaction
+            // of ours to record
+            for (const r of await claimer.claim()) if (r.signature) store.logTx("claim-fees", r.signature, true);
+          } catch (e: any) {
+            log("fee claim: " + String(e?.message ?? e).slice(0, 200));
+          }
+        }
+        const [bal, rent] = await withTimeout(Promise.all([chain.balance(fee.publicKey), chain.rentExempt(0)]), "fee keypair balance");
+        // fund() runs under CU.IX; its fee comes out of the same wallet
+        const spare = bal - rent - GAS_RESERVE - chain.fee(CU.IX);
         if (spare <= 0n) return;
         const sig = await chain.fund(spare, SWEEP_POOL_BPS, fee);
         store.logTx("fees", sig, true);
-        store.persist();
         log(`swept ${formatSol(spare)} SOL of fee income into the world`);
       } catch (e: any) {
         log("fee sweep: " + String(e?.message ?? e).slice(0, 140));
       } finally {
-        sweeping = false;
+        store.persist();
+        sweeping = null;
       }
     };
     setTimeout(sweep, 20_000);
@@ -506,16 +543,19 @@ async function buildWorld() {
 
   return {
     cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL,
-    corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT,
+    corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT, dataDir: DATA_DIR, adminToken: ADMIN_TOKEN,
     chain, store, engine, accounts, ops, log, bufferTicks: BUFFER_TICKS,
     tick: () => tick, capacity: () => capacity, lastEpoch: () => lastEpoch,
+    // the clock's anchor: /api/health measures drift from here
+    startedAt: { wall: Date.now(), tick },
     larvae: () => larvae, world: () => worldView, refreshChain,
     snapshotMeta: () => ({ tick: engine.tick, eventHead: lastEvHead, nextUid, slotUid }),
+    snapshotBytes,
     engineLarva: (id: number) => {
       const s = engine.slotOf(id);
       return s < 0 ? null : { generation: engine.generation[s], lineage: engine.lineage[s], genomeHash: genomeHex(s) };
     },
-    shutdown: () => { store.persist(); saveSnapshot(); },
+    shutdown: () => { store.persist(); saveSnapshot(); store.releaseLock(); },
   };
 }
 
@@ -529,12 +569,21 @@ async function main() {
     try { ctx?.shutdown(); } catch (e2) { console.error("[instar] could not save on the way out:", e2); }
     process.exit(1);
   });
-  ctx = await buildWorld();
-  const server = createServer(ctx);
-  server.listen(PORT, () => log(`world live on :${PORT} — tick ${ctx!.tick()}`));
-  const shutdown = () => { ctx!.shutdown(); log("journal + snapshot saved"); process.exit(0); };
+  // The port first: a replay from genesis takes minutes, and a supervisor
+  // that sees a refused connection for that long restarts a healthy boot.
+  // Until the world is built every route answers 503 `replaying`.
+  const server = createServer(boot);
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(PORT, resolve); });
+  log(`listening on :${PORT} — building the world`);
+  const shutdown = () => {
+    if (ctx) { ctx.shutdown(); log("journal + snapshot saved"); } else releaseLock(DATA_DIR);
+    process.exit(0);
+  };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  ctx = await buildWorld();
+  boot.ctx = ctx;
+  log(`world live on :${PORT} — tick ${ctx.tick()}`);
 }
 
-main().catch(e => { console.error("[instar]", e?.message ?? e); process.exit(1); });
+main().catch(e => { console.error("[instar]", e?.message ?? e); releaseLock(DATA_DIR); process.exit(1); });

@@ -6,6 +6,8 @@ import { Dish3D } from "./dish3d.js";
 import { ROLE_COLOR } from "./brainmap.js";
 import { drawQR } from "./qr.js";
 import { session, setSession, post, explorerLink, sol, price, short, esc, fmt, STATUS, STATUS_NAME, LAMPORTS } from "./api.js";
+import { Program, loadIdl, identityDrift, rememberIdentity } from "./chain.js";
+import { wallets, onWallets } from "./wallet.js";
 
 const $ = (id) => document.getElementById(id);
 const hudLast = {};
@@ -24,11 +26,24 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   const live = world.live;
   const config = live ? live.config : {};
   const src = () => live || config;
-  const txLink = (sig, n = 8) => sig ? `<a class="chain" href="${explorerLink("tx", sig, src())}" target="_blank" rel="noopener">${short(sig, n)}</a>` : "";
-  const addrLink = (a, n = 4) => a ? `<a class="chain" href="${explorerLink("address", a, src())}" target="_blank" rel="noopener">${short(a, n)}</a>` : "\u2014";
+  const txLink = (sig, n = 8) => sig ? `<a class="chain" href="${esc(explorerLink("tx", sig, src()))}" target="_blank" rel="noopener">${esc(short(sig, n))}</a>` : "";
+  const addrLink = (a, n = 4) => a ? `<a class="chain" href="${esc(explorerLink("address", a, src()))}" target="_blank" rel="noopener">${esc(short(a, n))}</a>` : "\u2014";
   const isMainnet = () => (live ? live.cluster : config.cluster) === "mainnet-beta";
   bootEl.classList.add("gone");
   fillConstants(world);
+  // The program and collection this browser first saw are remembered; a
+  // world that names different ones since gets a red banner until the
+  // visitor accepts the change, and wallet mode also refuses any program
+  // but the one pinned in chain.js.
+  {
+    const seen = identityDrift(config);
+    if (seen) {
+      const b = $("identity-banner");
+      b.hidden = false;
+      setHtml("identity-text", `this world's chain identity changed since your first visit: program ${esc(short(seen.programId, 6))} \u2192 ${esc(short(config.programId, 6))}, collection ${esc(short(seen.collection, 6))} \u2192 ${esc(short(config.collection, 6))}. Do not sign anything unless you expected this.`);
+      $("identity-accept").addEventListener("click", () => { rememberIdentity(config); b.hidden = true; });
+    }
+  }
 
   const dish = new Dish3D($("dish"), world, { embedded: false, onSelect: onSelect });
 
@@ -114,15 +129,23 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
 
   // ---------- market / larvae / mine / activity ----------
   let me = null;
+  // Who is acting: the custodial session's wallet, or in wallet mode the
+  // connected wallet. Every "yours" test on the page goes through myAddr().
+  let acctMode = (() => { try { return localStorage.getItem("instar_acct_mode") === "wallet" ? "wallet" : "custodial"; } catch { return "custodial"; } })();
+  let wallet = null;   // the connected adapter from wallet.js
+  let program = null;  // chain.js Program, built once the IDL has been read
+  let walletBal = { balance: 0n, credit: 0n };
+  const walletMode = () => acctMode === "wallet";
+  const myAddr = () => walletMode() ? (wallet ? wallet.address : null) : (session ? session.wallet : null);
   const larvaOf = (uid) => live && live.larvae ? live.larvae.find(l => l.id === uid) : null;
-  const keeperName = (pk) => !pk ? "\u2014" : (session && pk === session.wallet) ? "you" : short(pk);
+  const keeperName = (pk) => !pk ? "\u2014" : pk === myAddr() ? "you" : short(pk);
   // lineageNames values are records {name, by, handle, tick}
   const lineageName = (lin) => { const r = live && live.lineageNames ? live.lineageNames[lin] : null; return r ? (typeof r === "string" ? r : r.name) : undefined; };
   const hasParent = (l) => l.parentId !== undefined && l.parentId !== null && l.parentId !== -1 && l.parentId !== "none";
   function statusBadge(l) {
     if (l.status === STATUS.OFFERED) return `<span class="badge sale">offered</span>`;
     if (l.status === STATUS.OWNED && Number(l.salePrice) > 0) return `<span class="badge sale">listed</span>`;
-    if (l.status === STATUS.OWNED && session && l.keeper === session.wallet) return `<span class="badge you">yours</span>`;
+    if (l.status === STATUS.OWNED && l.keeper === myAddr()) return `<span class="badge you">yours</span>`;
     if (l.status === STATUS.WILD) return `<span class="badge">wild</span>`;
     if (l.status === STATUS.DEAD) return `<span class="badge">dead</span>`;
     return "";
@@ -140,8 +163,9 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     const win = btn.closest(".win");
     const m = win ? win.querySelector(".act-msg") : null;
     const say = (cls, html) => { if (m) { m.className = "msg act-msg " + cls; m.innerHTML = html; } inlineMsg(btn, cls, html); };
-    if (!session) { say("err", "sign in first (Account)"); toggleWin("win-account", true); return; }
     if (inflight) { say("", `waiting for ${esc(inflight)} to settle`); return; }
+    if (walletMode() && chain) return walletAct(kind, body, okMsg, btn, say);
+    if (!session) { say("err", walletMode() ? "this needs an Instar account (Account)" : "sign in first (Account)"); toggleWin("win-account", true); return; }
     inflight = kind; btn.disabled = true;
     say("", chain ? "signing\u2026" : "sending\u2026");
     try {
@@ -156,6 +180,63 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     } finally {
       inflight = null; btn.disabled = false;
     }
+  }
+  // Wallet mode: the page builds the instruction from the IDL, the wallet
+  // signs, the RPC named by the world carries it, and the journal is polled
+  // until the world has read the change back from the chain. The price the
+  // visitor saw is the price the program is told, so a relisting in between
+  // is refused (WrongPrice), never silently paid.
+  async function walletAct(kind, body, okMsg, btn, say) {
+    if (!wallet || !wallet.address || !program) { say("err", "connect your wallet first (Account)"); toggleWin("win-account", true); return; }
+    const who = wallet.address;
+    const rec = body.id !== undefined ? larvaOf(body.id) : null;
+    if (body.id !== undefined && !rec) { say("err", `#${body.id} is not on the record yet`); return; }
+    let ix, settled = null, landed = null;
+    try {
+      if (kind === "buy") { ix = program.buy(who, rec, body.lamports); settled = (l) => l.keeper === who; }
+      else if (kind === "buylisted") { ix = program.buyListed(who, rec, body.lamports); settled = (l) => l.keeper === who; }
+      else if (kind === "list") { ix = program.list(who, rec, body.lamports); settled = (l) => String(l.salePrice) === String(body.lamports); }
+      else if (kind === "unlist") { ix = program.unlist(who, rec); settled = (l) => Number(l.salePrice) === 0; }
+      else if (kind === "transfer") { ix = program.transferAsset(who, rec, body.to); settled = (l) => l.keeper === body.to; }
+      else if (kind === "cull") { ix = program.requestCull(who, rec); settled = (l) => !!l.pendingCull; }
+      else if (kind === "withdraw") { ix = program.withdraw(who); landed = async () => (await program.credit(who)) === 0n; }
+      else { say("err", `${kind} needs an Instar account`); return; }
+    } catch (e) { say("err", esc(e.message)); return; }
+    // An expired transaction is re-checked against the record before the
+    // wallet is asked to sign again: a few journal polls, or the credit
+    // account for a withdrawal.
+    if (settled) landed = () => untilJournal(body.id, settled, 3);
+    inflight = kind; btn.disabled = true;
+    say("", "waiting for your wallet\u2026");
+    try {
+      const sig = await program.send(wallet, who, [ix], { landed });
+      const done = typeof okMsg === "function" ? okMsg({ sig }) : okMsg;
+      pushChain(`<b>${esc(kind)}</b> ${body.id !== undefined ? "#" + body.id : ""} ${txLink(sig)} signed by your wallet`);
+      if (settled) {
+        say("ok", `${done} ${txLink(sig)}; waiting for the world to read it\u2026`);
+        await untilJournal(body.id, settled);
+      }
+      say("ok", `${done} ${txLink(sig)}`);
+    } catch (e) {
+      say("err", esc(e.message));
+    } finally {
+      inflight = null; btn.disabled = false;
+    }
+    refreshWallet();
+    renderWindows();
+    updateInspector(true);
+  }
+  // The world re-reads the chain every few seconds; keep polling the journal
+  // until this larva's record shows the change, or give up after `tries`
+  // polls two seconds apart (15 = 30 s).
+  async function untilJournal(id, pred, tries = 15) {
+    for (let i = 0; i < tries; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      await poll();
+      const l = larvaOf(id);
+      if (l && pred(l)) return true;
+    }
+    return false;
   }
   const idBtn = (id) => `<button class="id" data-sel="${id}" aria-label="inspect larva ${id}">#${id}</button>`;
   const buyBtn = (l, kind, label) => `<button data-${kind}="${l.id}" data-price="${esc(l.salePrice)}">${label}</button>`;
@@ -181,7 +262,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       : `<div class="note">no newborn is offered right now; the next birth will be</div>`);
     const resale = (live.larvae || []).filter(l => l.status === STATUS.OWNED && Number(l.salePrice) > 0);
     setHtml("m-resale", resale.length
-      ? resale.map(l => `<div class="row">${idBtn(l.id)}<span class="g">gen ${l.generation} \u00b7 vault ${sol(l.vault)} \u00b7 ${keeperName(l.keeper)}</span><span class="v">${price(l.salePrice)} SOL</span>${session && l.keeper === session.wallet ? "" : buyBtn(l, "buylisted", "Buy")}</div>`).join("")
+      ? resale.map(l => `<div class="row">${idBtn(l.id)}<span class="g">gen ${l.generation} \u00b7 vault ${sol(l.vault)} \u00b7 ${keeperName(l.keeper)}</span><span class="v">${price(l.salePrice)} SOL</span>${l.keeper === myAddr() ? "" : buyBtn(l, "buylisted", "Buy")}</div>`).join("")
       : `<div class="note">nothing listed by a keeper</div>`);
   }
   function renderLarvae() {
@@ -203,11 +284,13 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
   function renderMine() {
     if (!winState["win-mine"]?.open) return;
     if (!live) { setHtml("mine-body", `<div class="note">no world is reachable; there is nothing to keep in a sandbox</div>`); return; }
-    if (!session || !me) { setHtml("mine-body", `<div class="note">sign in to see the larvae you keep</div>`); return; }
-    const mine = (live.larvae || []).filter(l => l.keeper === session.wallet && l.status === STATUS.OWNED);
+    const who = myAddr();
+    if (!who || (!walletMode() && !me)) { setHtml("mine-body", `<div class="note">${walletMode() ? "connect your wallet" : "sign in"} to see the larvae you keep</div>`); return; }
+    const mine = (live.larvae || []).filter(l => l.keeper === who && l.status === STATUS.OWNED);
     const vaults = mine.reduce((a, l) => a + Number(l.vault), 0);
+    const balance = walletMode() ? walletBal.balance : me.balance;
     setHtml("mine-body",
-      `<div class="kv2"><span>balance</span><span>${sol(me.balance)} SOL</span><span>keeping</span><span>${mine.length}</span><span>in vaults</span><span>${sol(vaults)} SOL</span></div>` +
+      `<div class="kv2"><span>balance</span><span>${sol(balance)} SOL</span><span>keeping</span><span>${mine.length}</span><span>in vaults</span><span>${sol(vaults)} SOL</span></div>` +
       (mine.length ? `<h4>yours</h4>` + mine.map(row).join("") : `<div class="note" style="margin-top:8px">you keep no larva yet; newborns are in the Market window</div>`));
   }
   const TX_LABEL = { birth: "birth registered", offer: "offered", buy: "bought", buylisted: "resold", list: "listed", unlist: "unlisted", transfer: "transferred", reward: "pool rewards", death: "death settled", cull: "culled", epoch: "epoch posted", heartbeat: "heartbeat", fund: "funded", withdraw: "withdrawn", airdrop: "airdrop" };
@@ -302,7 +385,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       `<span>ecdysone</span><span>${fmt(ecd)}</span>` +
       `<span>eaten</span><span>${fmt(eaten)}</span>` +
       `<span>genome</span><span>${mutated === 0 ? "identical to the census weights" : `${fmt(mutated)} of ${fmt(baseWeights.length)} weights differ from the census`}</span>` +
-      (rec ? `<span>keeper</span><span>${rec.keeper ? addrLink(rec.keeper) + (session && rec.keeper === session.wallet ? " (you)" : "") : "none"}</span>` +
+      (rec ? `<span>keeper</span><span>${rec.keeper ? addrLink(rec.keeper) + (rec.keeper === myAddr() ? " (you)" : "") : "none"}</span>` +
         (rec.asset ? `<span>NFT</span><span>${addrLink(rec.asset)}</span>` : "") +
         `<span>vault</span><span>${sol(rec.vault)} SOL</span>` +
         `<span>status</span><span>${STATUS_NAME[rec.status]}${rec.pendingCull ? ", cull requested" : ""}</span>` +
@@ -310,8 +393,8 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
         : (live ? `<span>chain</span><span>registration pending</span>` : "")));
     const art = $("i-art");
     if (live) { const s = `${API}/api/larva/${uid}.svg`; if (art.getAttribute("src") !== s) art.src = s; art.hidden = false; } else art.hidden = true;
-    const mine = rec && session && rec.keeper === session.wallet && rec.status === STATUS.OWNED;
-    const key = rec ? `${uid}:${rec.status}:${rec.salePrice}:${mine}` : `${uid}:none`;
+    const mine = rec && rec.keeper === myAddr() && rec.status === STATUS.OWNED;
+    const key = rec ? `${uid}:${rec.status}:${rec.salePrice}:${rec.pendingCull}:${mine}:${acctMode}` : `${uid}:none`;
     if (!force && key === inspKey) return;
     inspKey = key;
     let actions = "";
@@ -319,11 +402,17 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       if (rec.status === STATUS.OFFERED) actions = buyBtn(rec, "buy", `Buy for ${price(rec.salePrice)} SOL`);
       else if (rec.status === STATUS.OWNED && Number(rec.salePrice) > 0 && !mine) actions = buyBtn(rec, "buylisted", `Buy for ${price(rec.salePrice)} SOL`);
       else if (mine) {
+        // Naming is a journal claim the world verifies against the custodial
+        // session, so it is offered there; a cull request is a program
+        // instruction the wallet can sign, and the custodial API has no
+        // route for it, so it is offered here.
         actions = (Number(rec.salePrice) > 0
           ? `<button data-act="unlist" data-id="${uid}">Unlist</button>`
           : `<input id="iv-price" placeholder="SOL" aria-label="listing price in SOL" inputmode="decimal"><button data-act="list" data-id="${uid}">List</button>`) +
           `<input id="iv-to" placeholder="to address" aria-label="transfer to this Solana address" style="width:150px"><button data-act="transfer" data-id="${uid}">Transfer</button>` +
-          `<input id="iv-name" placeholder="name lineage ${lin}" aria-label="name for lineage ${lin}" maxlength="32"><button data-act="name" data-id="${uid}" class="quiet">Name</button>`;
+          (walletMode()
+            ? (rec.pendingCull ? "" : `<button data-act="cull" data-id="${uid}" class="quiet" title="ask the world to end this larva; 85% of its vault becomes your credit">Request cull</button>`)
+            : `<input id="iv-name" placeholder="name lineage ${lin}" aria-label="name for lineage ${lin}" maxlength="32"><button data-act="name" data-id="${uid}" class="quiet">Name</button>`);
       }
     }
     setHtml("i-market", actions ? `<div class="actions">${actions}</div>` : "");
@@ -346,6 +435,10 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
       const name = $("iv-name").value.trim();
       if (!name) { fail("enter a name"); return; }
       act("name-lineage", { id: uid, name }, (j) => `lineage ${j.lineage} is now \u201c${esc(j.name ?? name)}\u201d`, btn, { chain: false });
+    } else if (kind === "cull") {
+      // irreversible: the first press arms the button, the second sends
+      if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Confirm cull"; return; }
+      act("cull", { id: uid }, `cull requested for #${uid}`, btn);
     }
   }
 
@@ -372,10 +465,94 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     }
   }
   function renderAcct() {
+    $("acct-custodial").hidden = walletMode();
+    $("acct-wallet").hidden = !walletMode();
+    document.querySelectorAll("#acct-modes button").forEach(b => b.classList.toggle("on", b.dataset.mode === acctMode));
+    if (walletMode()) { renderWallet(); return; }
     $("acct-out").hidden = !!session;
     $("acct-in").hidden = !session;
     if (session) refreshMe();
   }
+  // ---- wallet mode ----
+  function setMode(mode) {
+    if (mode === acctMode) return;
+    acctMode = mode;
+    try { localStorage.setItem("instar_acct_mode", mode); } catch { /* private mode */ }
+    renderAcct(); renderWindows(); updateInspector(true);
+  }
+  document.querySelectorAll("#acct-modes button").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+  // The IDL is read once, the first time wallet mode needs it.
+  let programLoading = null;
+  function ensureProgram() {
+    if (program) return Promise.resolve(program);
+    if (!live) return Promise.reject(new Error("no world is reachable from this page, so there is nothing to sign"));
+    return programLoading ??= loadIdl().then(idl => (program = new Program(idl, config))).catch(e => { programLoading = null; throw e; });
+  }
+  function renderWallet() {
+    if (!live) { $("wal-out").hidden = false; $("wal-in").hidden = true; setHtml("wal-list", ""); msg("wal-msg", "no world is reachable from this page", "err"); return; }
+    const on = !!(wallet && wallet.address);
+    $("wal-out").hidden = on;
+    $("wal-in").hidden = !on;
+    if (on) {
+      setHud("wal-name", wallet.name);
+      setHud("wal-addr", wallet.address);
+      setHud("wal-owned", (live.larvae || []).filter(l => l.keeper === wallet.address && l.status === STATUS.OWNED).length);
+      setHud("wal-rpc", (program && program.endpoints[0]) || config.rpc || "the RPC");
+      $("wal-scan").href = explorerLink("address", wallet.address, live);
+      return;
+    }
+    const found = wallets(live.cluster);
+    setHtml("wal-list", found.length
+      ? found.map(w => `<button data-wallet="${esc(w.name)}">Connect ${esc(w.name)}</button>`).join("")
+      : `<span class="note">no Solana wallet is installed in this browser; Phantom, Solflare and Backpack all register themselves here once installed</span>`);
+  }
+  onWallets(() => { if (walletMode()) renderWallet(); });
+  // The wallet window's message line doubles as act()'s .act-msg target, so
+  // its class is kept intact when it is written directly.
+  const walMsg = (text, cls = "") => { const m = $("wal-msg2"); m.className = "msg act-msg " + cls; m.textContent = text; };
+  async function refreshWallet() {
+    if (!wallet || !wallet.address || !program) return;
+    const who = wallet.address;
+    try {
+      const [balance, credit] = await Promise.all([program.balance(who), program.credit(who)]);
+      if (!wallet || wallet.address !== who) return;
+      walletBal = { balance, credit };
+      setHud("wal-balance", sol(balance) + " SOL");
+      setHud("wal-credit", sol(credit) + " SOL");
+      $("wal-claim").hidden = credit === 0n;
+      renderMine();
+    } catch (e) { walMsg(`the RPC did not answer: ${e.message}`, "err"); }
+  }
+  // The change listener is kept so a disconnect (ours or the wallet's)
+  // removes it; otherwise every reconnect would add another.
+  let walletOff = null;
+  function dropWallet() {
+    if (walletOff) { try { walletOff(); } catch { /* the wallet may already be gone */ } walletOff = null; }
+    wallet = null;
+  }
+  $("wal-list").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-wallet]");
+    if (!b) return;
+    const w = wallets(live.cluster).find(x => x.name === b.dataset.wallet);
+    if (!w) return;
+    b.disabled = true; msg("wal-msg", `asking ${w.name}\u2026`);
+    try {
+      await ensureProgram();
+      await w.connect();
+      dropWallet();
+      wallet = w;
+      walletOff = w.onChange((addr) => { if (!addr) dropWallet(); walMsg(""); renderAcct(); renderWindows(); updateInspector(true); refreshWallet(); });
+      msg("wal-msg", ""); walMsg("");
+      renderAcct(); renderWindows(); updateInspector(true);
+      refreshWallet();
+    } catch (e) { msg("wal-msg", e.message, "err"); b.disabled = false; }
+  });
+  $("wal-disconnect").addEventListener("click", async () => {
+    const w = wallet; dropWallet();
+    try { if (w) await w.disconnect(); } catch { /* the wallet may already be gone */ }
+    renderAcct(); renderWindows(); updateInspector(true);
+  });
+  $("wal-claim").addEventListener("click", (ev) => act("withdraw", {}, "credit claimed", ev.currentTarget));
   function signIn(j) { setSession({ token: j.token, user: j.user, name: j.name, wallet: j.wallet }); msg("acct-msg2", ""); renderAcct(); renderMine(); }
   function signOut() { setSession(null); me = null; msg("acct-msg2", ""); renderAcct(); renderMine(); }
   async function auth(create) {
@@ -452,7 +629,7 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     document.head.appendChild(s);
   }
   renderAcct();
-  if (live) setInterval(refreshMe, 15000);
+  if (live) setInterval(() => { refreshMe(); refreshWallet(); }, 15000);
 
   // ---------- first person ----------
   const fpBtn = $("btn-fp"), hint = $("hint"), crosshair = $("crosshair");

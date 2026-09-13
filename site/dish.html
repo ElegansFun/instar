@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY=' https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'none'; object-src 'none'">
 <title>Instar — the dish</title>
 <meta name="description" content="The live Instar dish: Drosophila first-instar larvae driven by the Winding et al. 2023 connectome, mirrored and verified in your browser, with the market and your account.">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -13,6 +14,7 @@
 
 <div class="boot" id="boot">loading the census and the engine</div>
 <canvas id="dish" aria-label="the dish"></canvas>
+<div class="banner" id="identity-banner" hidden><span id="identity-text"></span> <button id="identity-accept">I expected this</button></div>
 
 <header class="hud">
   <a class="brand" href="./"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="./mark.svg#m"></use></svg><span>Instar</span></a>
@@ -105,8 +107,13 @@
 <section class="win" id="win-account">
   <div class="win-head"><span class="t">Account</span><button data-min title="close">&times;</button></div>
   <div class="win-body">
+    <div class="modes" id="acct-modes" role="tablist" aria-label="account mode">
+      <button data-mode="custodial" role="tab">Instar account</button>
+      <button data-mode="wallet" role="tab">Your wallet</button>
+    </div>
+    <div id="acct-custodial">
     <div id="acct-out">
-      <div class="note">An account is a Solana keypair the world process holds for you, encrypted under your PIN. There is no wallet to connect; that is by design and it is a trust assumption. You can withdraw everything at any time.</div>
+      <div class="note">An Instar account is a Solana keypair the world process holds for you, encrypted under your PIN. The server holds the key: that is a trust assumption, and it is the quick way in. If you would rather hold the key yourself, use <b>Your wallet</b>. You can withdraw everything at any time.</div>
       <div class="field"><label for="acct-user">name</label><input id="acct-user" maxlength="24" autocomplete="username" placeholder="a name for this account"></div>
       <div class="field"><label for="acct-pin">pin</label><input id="acct-pin" type="password" inputmode="numeric" maxlength="32" autocomplete="current-password" placeholder="4 or more digits"></div>
       <div class="actions">
@@ -139,9 +146,34 @@
       <div class="actions"><button id="acct-withdraw">Withdraw</button><button id="acct-logout" class="quiet">Sign out</button></div>
       <div class="msg" id="acct-msg2"></div>
     </div>
+    </div>
+    <div id="acct-wallet" hidden>
+      <div id="wal-out">
+        <div class="note">A wallet you already hold: Phantom, Solflare, Backpack or any Wallet Standard wallet in this browser. This page builds each transaction from the program's IDL and your wallet signs it; the world process never sees your key and cannot act for you. Purchases, listings, transfers and cull requests all work this way. Naming a lineage is a journal claim, not a chain action, and needs an Instar account.</div>
+        <div class="actions" id="wal-list"></div>
+        <div class="msg" id="wal-msg"></div>
+      </div>
+      <div id="wal-in" hidden>
+        <div class="kv2">
+          <span>wallet</span><span id="wal-name">&mdash;</span>
+          <span>address</span><span id="wal-addr">&mdash;</span>
+          <span>balance</span><span id="wal-balance">&mdash;</span>
+          <span>credit</span><span id="wal-credit">&mdash;</span>
+          <span>keeping</span><span id="wal-owned">&mdash;</span>
+        </div>
+        <div class="note">Balance and credit are read from <span id="wal-rpc">the RPC</span> by this page. Credit is what the program owes this address from resales, deaths and culls; claiming it is a transaction your wallet signs.</div>
+        <div class="actions">
+          <button id="wal-claim" hidden>Claim credit</button>
+          <a id="wal-scan" class="chain" href="#" target="_blank" rel="noopener">explorer</a>
+          <button id="wal-disconnect" class="quiet">Disconnect</button>
+        </div>
+        <div class="msg act-msg" id="wal-msg2"></div>
+      </div>
+    </div>
   </div>
 </section>
 
+<script src="./vendor/web3.js"></script>
 <script type="module" src="./dish.js"></script>
 </body>
 </html>

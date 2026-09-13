@@ -12,7 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { Chain, MPL_CORE, PUBLIC_RPC, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
+import { Chain, MPL_CORE, PUBLIC_RPC, formatSol, loadKeypair, parseSol, type Cluster } from "../services/chain/solana.mts";
+import { FEE_KEYPAIR_MIN, FeeClaimer, GAS_RESERVE_MIN } from "../services/chain/fees.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cluster = (process.env.INSTAR_CLUSTER ?? "localnet") as Cluster;
@@ -22,6 +23,7 @@ let failed = 0;
 const ok = (what: string) => console.log(`  ok    ${what}`);
 const next = (what: string) => console.log(`  next  ${what}`);
 const bad = (what: string) => { failed++; console.log(`  FAIL  ${what}`); };
+const warn = (what: string) => console.log(`  WARN  ${what}`);
 
 console.log(`preflight for ${cluster} (${rpc})`);
 
@@ -55,6 +57,11 @@ const toml = fs.readFileSync(path.join(root, "program/Anchor.toml"), "utf8");
 const tomlIds = [...toml.matchAll(/^instar = "([^"]+)"/gm)].map((m) => m[1]);
 if (tomlIds.length && tomlIds.every((v) => v === declared)) ok("Anchor.toml program ids agree");
 else bad(`Anchor.toml program ids ${tomlIds.join(", ")} differ from ${declared}`);
+// The site pins the program it signs for (site/chain.js PROGRAM_ID); a
+// rotation that forgets it would ship a page refusing every wallet action.
+const sitePin = fs.readFileSync(path.join(root, "site/chain.js"), "utf8").match(/export const PROGRAM_ID = "([^"]+)"/)?.[1] ?? "";
+if (sitePin === idl.address) ok(`site/chain.js pins program ${sitePin} (matches the IDL)`);
+else bad(`site/chain.js pins program ${sitePin || "(none)"} but the IDL is ${idl.address}: update PROGRAM_ID in site/chain.js`);
 
 // ---- the keys ------------------------------------------------------------------
 const deployerPath = path.resolve(root, process.env.INSTAR_DEPLOYER_KEYPAIR ?? process.env.INSTAR_OPERATOR_KEYPAIR ?? ".keys/operator.json");
@@ -75,10 +82,16 @@ if (/^[0-9a-f]{64}$/i.test(master)) ok("INSTAR_MASTER_KEY is 32 bytes of hex");
 else if (publicCluster) bad("INSTAR_MASTER_KEY must be set (64 hex chars) on a public cluster; scripts/new-keys.mts writes one");
 else next("INSTAR_MASTER_KEY unset: localnet derives one from the operator key");
 
+let feeKey: Keypair | null = null;
 if (process.env.INSTAR_FEE_KEYPAIR) {
   const p = path.resolve(root, process.env.INSTAR_FEE_KEYPAIR);
-  if (fs.existsSync(p)) ok(`fee keypair ${loadKeypair(p).publicKey.toBase58()}`); else bad(`INSTAR_FEE_KEYPAIR not found: ${p}`);
+  if (fs.existsSync(p)) { feeKey = loadKeypair(p); ok(`fee keypair ${feeKey.publicKey.toBase58()}`); } else bad(`INSTAR_FEE_KEYPAIR not found: ${p}`);
 } else next("INSTAR_FEE_KEYPAIR unset: the world will not sweep creator fees until it is");
+let coinMint: PublicKey | null = null;
+if (process.env.INSTAR_COIN_MINT) {
+  try { coinMint = new PublicKey(process.env.INSTAR_COIN_MINT); } catch { bad(`INSTAR_COIN_MINT is not a Solana address: ${process.env.INSTAR_COIN_MINT}`); }
+  if (coinMint && !feeKey) bad("INSTAR_COIN_MINT is set but INSTAR_FEE_KEYPAIR is not: nothing can claim the coin's fees");
+} else next("INSTAR_COIN_MINT unset: the world sweeps the fee keypair but claims no creator fees (docs/COIN.md)");
 
 if (publicCluster && rpc === PUBLIC_RPC[cluster]) next(`using the public RPC ${rpc}; it rate-limits, set INSTAR_RPC to a paid endpoint for a live world`);
 
@@ -100,6 +113,37 @@ try {
   const core = await chain.connection.getAccountInfo(MPL_CORE);
   if (core?.executable) ok(`Metaplex Core is deployed at ${MPL_CORE.toBase58()}`);
   else bad(`Metaplex Core (${MPL_CORE.toBase58()}) is not deployed on ${rpc}${cluster === "localnet" ? ": restart the validator with npm run localnet (it preloads program/deps/mpl_core.so)" : ""}`);
+
+  // The coin's creator fees can only reach the dish if the bonding curve
+  // names the fee keypair as creator; that is set once, at launch, and
+  // cannot be changed by us afterwards.
+  if (coinMint && feeKey) {
+    const mintInfo = await chain.connection.getAccountInfo(coinMint);
+    if (!mintInfo) bad(`INSTAR_COIN_MINT ${coinMint.toBase58()} does not exist on ${cluster}`);
+    else {
+      ok(`$INSTAR mint ${coinMint.toBase58()} exists (owner ${mintInfo.owner.toBase58()})`);
+      const s = await new FeeClaimer({ chain, mint: coinMint, fee: feeKey }).status();
+      if (!s.curve) bad(`no pump.fun bonding curve for ${coinMint.toBase58()}: the coin was not launched on pump.fun, so there are no creator fees to claim`);
+      else {
+        if (!s.curve.creator.equals(feeKey.publicKey)) {
+          bad(`bonding curve creator is ${s.curve.creator.toBase58()}, not the fee keypair ${feeKey.publicKey.toBase58()}: every creator fee this coin earns goes to that wallet instead of the dish, and pump.fun does not let us change it (docs/COIN.md)`);
+        } else {
+          ok("bonding curve creator is the fee keypair: creator fees go to the dish");
+          for (const p of s.problems) bad(p);
+          for (const p of s.poolProblems) bad(`PumpSwap: ${p}; the bonding-curve vault is still claimed`);
+        }
+        if (s.curve.complete) ok(`graduated: canonical PumpSwap pool ${s.pool ? s.pool.address.toBase58() : "not found yet"}`);
+        else ok("still on the bonding curve (not graduated)");
+        ok(`claimable now: ${formatSol(s.curveVault.claimable)} SOL on the curve, ${formatSol(s.ammVault.amount)} SOL on PumpSwap${s.creatorWsol.amount > 0n ? `, ${formatSol(s.creatorWsol.amount)} SOL unclosed in the fee keypair's wSOL account` : ""}`);
+        // Every claim is paid by the fee keypair and only a claim ever pays
+        // it: unfunded, it can never make the first one (docs/COIN.md §1).
+        if (s.feeBalance >= FEE_KEYPAIR_MIN) ok(`fee keypair holds ${formatSol(s.feeBalance)} SOL for claim fees`);
+        else bad(`fee keypair holds ${formatSol(s.feeBalance)} SOL; it pays every claim and nothing funds it but a claim, so seed it with at least ${formatSol(FEE_KEYPAIR_MIN)} SOL: npx tsx scripts/operator.mts fund-fee-keypair ${FEE_KEYPAIR_MIN}`);
+        const reserve = parseSol(process.env.INSTAR_GAS_RESERVE ?? "0.05");
+        if (reserve < GAS_RESERVE_MIN) warn(`INSTAR_GAS_RESERVE is ${formatSol(reserve)} SOL; the sweep would leave less than a wSOL account's rent (${formatSol(s.ataRent)} SOL) plus a fee, and the next PumpSwap claim would fail; keep at least ${formatSol(GAS_RESERVE_MIN)}`);
+      }
+    }
+  }
 
   if (deployer) {
     const bal = await chain.balance(deployer.publicKey);

@@ -10,6 +10,10 @@ Program id: the keypair at `program/target/deploy/instar-keypair.json`
 (mirrored in `.keys/instar-program.json`, both gitignored). The IDL and its TS
 types are copied to `services/chain/idl/` on every build; `address` in the IDL
 is the program id the world process uses unless `INSTAR_PROGRAM_ID` overrides it.
+The site pins the same id in `site/chain.js` (`PROGRAM_ID`): wallet mode
+refuses any other program, IDL address or world PDA the server names, and
+`scripts/preflight.mts` fails when the pin and the IDL disagree, so a rotation
+means editing that constant too.
 
 ## Design rule
 

@@ -239,6 +239,15 @@ body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--
 .bench .hud .spacer { flex: 1; }
 .bench .hud a.index { border: 0; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; }
 .bench .hud a.index:hover { color: var(--ink); }
+/* the chain-identity warning: fixed just under the hud, above every window */
+.bench .banner {
+  position: fixed; left: 0; right: 0; top: 40px; z-index: 30;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 14px; background: #9b2f1b; color: var(--paper); border-bottom: 1px solid var(--ink);
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.03em;
+}
+.bench .banner[hidden] { display: none; }
+.bench .banner button { color: var(--paper); border-color: var(--paper); background: transparent; }
 
 .bench .dock {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
@@ -294,6 +303,10 @@ body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--
 .win .qr { display: block; margin: 8px 0; width: 148px; height: 148px; image-rendering: pixelated; border: 1px solid var(--rule); }
 .win .addr { font-size: 11px; word-break: break-all; line-height: 1.5; }
 .win .stack { display: flex; flex-direction: column; gap: 4px; }
+.win .modes { display: flex; border: 1px solid var(--ink); margin-bottom: 10px; }
+.win .modes button { flex: 1; border: 0; border-right: 1px solid var(--ink); padding: 6px 8px; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+.win .modes button:last-child { border-right: 0; }
+.win .modes button.on { background: var(--ink); color: var(--paper); }
 .win .badge { display: inline-block; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid var(--rule-strong); padding: 0 4px; margin-left: 6px; vertical-align: 1px; color: var(--ink-2); }
 .win .badge.you { border-color: var(--amber); color: var(--amber); }
 .win .badge.sale { border-color: var(--chain); color: var(--chain); }

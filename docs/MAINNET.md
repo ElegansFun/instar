@@ -148,16 +148,28 @@ exist, so a stale journal cannot quietly corrupt it.
 
 ### d. Launch the token, then feed the dish
 
-Launch `$INSTAR` from a wallet you control, with its creator-fee destination
-set to the `fee.json` address from `npm run keys:new`. Then:
+Launch `$INSTAR` on pump.fun with its **creator** set to the `fee.json`
+address from `npm run keys:new`; that field is written once, at launch, and
+decides where every creator fee goes for the life of the coin. The launch
+wallet can be any hot wallet; the fee keypair does not sign. Holder rewards,
+cashback and Mayhem mode off. `docs/COIN.md` has the whole procedure and
+what the coin is. Then:
 
 | env | value |
 |---|---|
 | `INSTAR_FEE_KEYPAIR` | path to `fee.json` inside the container |
+| `INSTAR_COIN_MINT` | the coin's mint address |
 
-The process sweeps it every ten minutes into `fund(5000)`. `fund` is
-permissionless: anyone can feed the dish from any wallet at any time, and the
-income does not stop when the process does.
+Seed the fee keypair once, from the operator key: `npx tsx
+scripts/operator.mts fund-fee-keypair 50000000 --yes` (0.05 SOL). It pays
+every claim and nothing else ever pays it. Re-run preflight with both set:
+it confirms the bonding curve's creator is the fee keypair, fails if it is
+not, and fails while the fee keypair holds under 0.02 SOL. Every ten minutes the process claims
+the coin's creator-fee vaults (bonding curve and, after graduation, the
+canonical PumpSwap pool) into the fee keypair and sweeps it into
+`fund(5000)`. `npx tsx scripts/fees.mts status` shows the vaults and the last
+claim. `fund` is permissionless: anyone can feed the dish from any wallet at
+any time, and the income does not stop when the process does.
 
 ## 4. What can go wrong, worst first
 
@@ -181,5 +193,7 @@ chain before resending, so a birth, offer, death or epoch is never registered
 twice.
 
 **The volume is lost.** The journal is the world's memory; without it the
-process refuses to continue against a program that already holds larvae. Back
-up `DATA_DIR` on a schedule.
+process refuses to continue against a program that already holds larvae. Set
+`INSTAR_ADMIN_TOKEN` and pull a backup hourly from a machine that is not the
+host: `INSTAR_ADMIN_TOKEN=… npx tsx scripts/backup.mts --pull https://your.domain`.
+That, and the rest of the world's life, is in `docs/OPERATIONS.md`.

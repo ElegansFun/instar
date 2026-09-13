@@ -241,11 +241,13 @@ export class Chain {
   }
 
   /// Solana Explorer wants `?cluster=` for devnet and a custom RPC for
-  /// localnet; on mainnet the parameter is omitted.
+  /// localnet; on mainnet the parameter is omitted. The custom RPC is the
+  /// cluster's PUBLIC endpoint, never the configured one: this string is
+  /// served to every visitor and INSTAR_RPC may carry a provider key.
   get explorerQuery(): string {
     if (this.cluster === "mainnet-beta") return "";
     if (this.cluster === "devnet") return "?cluster=devnet";
-    return "?cluster=custom&customUrl=" + encodeURIComponent(this.rpcUrl);
+    return "?cluster=custom&customUrl=" + encodeURIComponent(PUBLIC_RPC[this.cluster]);
   }
   explorerTx(sig: string) { return `https://explorer.solana.com/tx/${sig}${this.explorerQuery}`; }
 
@@ -626,6 +628,72 @@ export class Chain {
       .accountsPartial({ world: this.worldPda, payer: payer.publicKey, systemProgram: SystemProgram.programId })
       .instruction();
     return this.send([ix], [payer], async () => { const w = await this.world(); return w.metabolism + w.pool >= expect; });
+  }
+
+  // ---- stewardship: hand-over, wind-down and the exits --------------------------
+  // What the world process never does on its own; scripts/operator.mts drives
+  // these by hand. `landed` reads the World field each one changes.
+
+  /// Not in wind-down; the program refuses the operator's own key.
+  async setRecovery(recovery: PublicKey): Promise<string> {
+    const ix = await this.program.methods.setRecovery(recovery)
+      .accountsPartial({ world: this.worldPda, operator: this.op.publicKey }).instruction();
+    return this.send([ix], [this.op], async () => (await this.world()).recovery.equals(recovery));
+  }
+
+  /// First half of the two-step hand-over: names the key that may accept.
+  async transferOperator(pending: PublicKey): Promise<string> {
+    const ix = await this.program.methods.transferOperator(pending)
+      .accountsPartial({ world: this.worldPda, operator: this.op.publicKey }).instruction();
+    return this.send([ix], [this.op], async () => (await this.world()).pendingOperator.equals(pending));
+  }
+
+  /// Second half, signed by the pending key itself (which pays the fee).
+  async acceptOperator(pending: Keypair): Promise<string> {
+    const ix = await this.program.methods.acceptOperator()
+      .accountsPartial({ world: this.worldPda, pendingOperator: pending.publicKey }).instruction();
+    return this.send([ix], [pending], async () => (await this.world()).operator.equals(pending.publicKey));
+  }
+
+  /// One-way. The operator may do this at any time; anyone may once the
+  /// operator has been silent for ABANDONED_AFTER (NotAbandoned before then).
+  async beginWindDown(signer: Keypair = this.op): Promise<string> {
+    const ix = await this.program.methods.beginWindDown()
+      .accountsPartial({ world: this.worldPda, signer: signer.publicKey }).instruction();
+    return this.send([ix], [signer], async () => (await this.world()).windDown);
+  }
+
+  /// Wind-down: metabolism + pool to `recovery`. No signer but the fee payer.
+  async sweepToRecovery(payer: Keypair = this.op): Promise<string> {
+    const { recovery } = await this.world();
+    const ix = await this.program.methods.sweepToRecovery()
+      .accountsPartial({ world: this.worldPda, recovery }).instruction();
+    return this.send([ix], [payer], async () => { const w = await this.world(); return w.metabolism === 0n && w.pool === 0n; });
+  }
+
+  /// Wind-down + ESCHEAT_AFTER: everything above rent to `recovery` and the
+  /// ledger zeroed (TooEarly before the timer). No signer but the fee payer.
+  async escheat(payer: Keypair = this.op): Promise<string> {
+    const { recovery } = await this.world();
+    const ix = await this.program.methods.escheat()
+      .accountsPartial({ world: this.worldPda, recovery }).instruction();
+    return this.send([ix], [payer], async () => { const w = await this.world(); return w.totalVaults === 0n && w.totalCredit === 0n && w.metabolism === 0n && w.pool === 0n; });
+  }
+
+  /// Anyone, after CULL_TIMEOUT: the keeper's 85% to their credit, the asset
+  /// burned. The keeper is the asset's owner at settlement, read here.
+  async forceSettleCull(id: number, payer: Keypair = this.op): Promise<string> {
+    const c = await this.creature(id);
+    if (!c) throw new ProgramError("WrongId", [], `forceSettleCull: larva ${id} was never registered`);
+    if (!c.pendingCull) throw new ProgramError("WrongStatus", [], `forceSettleCull: larva ${id} has no cull pending`);
+    const ix = await this.program.methods.forceSettleCull(bn(id))
+      .accountsPartial({
+        world: this.worldPda, payer: payer.publicKey, creature: this.creaturePda(id), asset: c.asset,
+        collection: await this.collection(), keeperCredit: this.creditPda(c.keeper),
+        mplCoreProgram: MPL_CORE, systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+    return this.send([ix], [payer], async () => (await this.creature(id))?.status === STATUS.DEAD, CU.CORE);
   }
 
   // ---- keeper instructions ----------------------------------------------------

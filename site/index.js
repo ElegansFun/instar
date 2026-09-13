@@ -7,7 +7,7 @@ import { explorerLink, sol, price, short, esc, fmt, STATUS, STATUS_NAME } from "
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, v) => { const el = $(id); if (el && el.textContent !== String(v)) el.textContent = String(v); };
-const link = (kind, value, src, n = 8) => value ? `<a class="chain" href="${explorerLink(kind, value, src)}" target="_blank" rel="noopener">${esc(value.length > 2 * n + 1 ? short(value, n) : value)}</a>` : "\u2014";
+const link = (kind, value, src, n = 8) => value ? `<a class="chain" href="${esc(explorerLink(kind, value, src))}" target="_blank" rel="noopener">${esc(value.length > 2 * n + 1 ? short(value, n) : value)}</a>` : "\u2014";
 
 // The measurements figure is filled from site/measurements.json when the
 // build has one; otherwise it stays hidden rather than showing placeholders.

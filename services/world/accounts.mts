@@ -18,6 +18,49 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const USER_RE = /^[a-z0-9_.-]{3,24}$/;
 const NO_MATCH = "no account matches that name and pin — tick 'create' to make one";
 
+/// Without INSTAR_MASTER_KEY the custody key is derived from the operator
+/// key. That key is hot and gets rotated, which would lock every keeper out:
+/// a localnet/devnet convenience only (index.mts refuses it on mainnet).
+export function deriveMasterKey(operatorSecret: Uint8Array): Buffer {
+  return crypto.createHash("sha256").update(Buffer.concat([operatorSecret, Buffer.from("|instar-custody-v1")])).digest();
+}
+
+/// Re-seal every custodial key in `dir`/accounts.json under `next`. The
+/// world must be stopped: it holds the file in memory and would write the
+/// old sealing back over this. Every record is opened before any is
+/// written, so a wrong `current` changes nothing. Returns how many.
+export function resealAccounts(dir: string, current: Buffer, next: Buffer): number {
+  const file = path.join(dir, "accounts.json");
+  const accounts: Record<string, Account> = JSON.parse(fs.readFileSync(file, "utf8"));
+  const resealed: Record<string, Account> = {};
+  for (const [user, a] of Object.entries(accounts)) {
+    let secret: Buffer;
+    try { secret = decrypt(current, a.enc); } catch { throw new Error(`${user}: cannot be opened with the current key — is INSTAR_MASTER_KEY the one the world runs with? Nothing was written`); }
+    if (secret.length !== 64) throw new Error(`${user}: sealed secret is ${secret.length} bytes, not a keypair`);
+    resealed[user] = { ...a, enc: encrypt(next, secret) };
+  }
+  const json = JSON.stringify(resealed);
+  writeAtomic(file, json);
+  // writeAtomic just pushed the old-key ciphertext into .bak; a rotation done
+  // because that key may have leaked must leave nothing sealed under it
+  writeAtomic(file + ".bak", json);
+  fs.rmSync(file + ".bak.bak", { force: true });
+  return Object.keys(resealed).length;
+}
+
+function encrypt(key: Buffer, secret: Uint8Array): Enc {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([c.update(secret), c.final()]);
+  return { iv: iv.toString("hex"), tag: c.getAuthTag().toString("hex"), ct: ct.toString("hex") };
+}
+
+function decrypt(key: Buffer, e: Enc): Buffer {
+  const d = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(e.iv, "hex"));
+  d.setAuthTag(Buffer.from(e.tag, "hex"));
+  return Buffer.concat([d.update(Buffer.from(e.ct, "hex")), d.final()]);
+}
+
 export class Accounts {
   private readonly accountsPath: string;
   private readonly sessionsPath: string;
@@ -60,6 +103,12 @@ export class Accounts {
     writeAtomic(this.accountsPath, JSON.stringify(this.accounts));
   }
 
+  /// The two files exactly as save() would write them now, for a backup
+  /// taken from the live process rather than from the disk.
+  serialize(): { accounts: string; sessions: string } {
+    return { accounts: JSON.stringify(this.accounts), sessions: JSON.stringify(Object.fromEntries(this.sessions)) };
+  }
+
   /// Records sealed under a different master key cannot be opened here, and
   /// the failure would otherwise surface mid sign-in as an AES error that
   /// tells the person nothing. Move them aside at boot; the file is kept —
@@ -85,16 +134,11 @@ export class Accounts {
   }
 
   private encrypt(secret: Uint8Array): Enc {
-    const iv = crypto.randomBytes(12);
-    const c = crypto.createCipheriv("aes-256-gcm", this.masterKey, iv);
-    const ct = Buffer.concat([c.update(secret), c.final()]);
-    return { iv: iv.toString("hex"), tag: c.getAuthTag().toString("hex"), ct: ct.toString("hex") };
+    return encrypt(this.masterKey, secret);
   }
 
   private decrypt(e: Enc): Buffer {
-    const d = crypto.createDecipheriv("aes-256-gcm", this.masterKey, Buffer.from(e.iv, "hex"));
-    d.setAuthTag(Buffer.from(e.tag, "hex"));
-    return Buffer.concat([d.update(Buffer.from(e.ct, "hex")), d.final()]);
+    return decrypt(this.masterKey, e);
   }
 
   // ---- identity -------------------------------------------------------------

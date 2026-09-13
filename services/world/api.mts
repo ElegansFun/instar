@@ -2,13 +2,15 @@
 // the static site. Every trade below is signed by the keeper's own custodial
 // key; the operator never buys, sells or moves a larva on anyone's behalf.
 
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import * as zlib from "zlib";
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { Chain, PUBLIC_RPC, STATUS, STATUS_NAME, type CreatureView, type WorldView, type Cluster } from "../chain/solana.mts";
+import { Chain, PUBLIC_RPC, STATUS, STATUS_NAME, formatSol, loadIdl, type CreatureView, type WorldView, type Cluster } from "../chain/solana.mts";
 import { Accounts } from "./accounts.mts";
+import { BACKUP_FILES, gzipArchive, type Entry as ArchiveEntry } from "./archive.mts";
 import { Engine } from "./engine.mts";
 import { JournalStore, type LineageName } from "./journal.mts";
 import { OpQueue } from "./ops.mts";
@@ -21,6 +23,9 @@ export type WorldContext = {
   corsOrigin: string;
   siteDir: string;
   rootDir: string;
+  dataDir: string;
+  /// INSTAR_ADMIN_TOKEN; empty disables GET /api/backup
+  adminToken: string;
   chain: Chain;
   store: JournalStore;
   engine: Engine;
@@ -32,14 +37,23 @@ export type WorldContext = {
   tick(): number;
   capacity(): number;
   lastEpoch(): number;
+  /// where the wall clock and the tick were when this process started
+  startedAt: { wall: number; tick: number };
   larvae(): CreatureView[];
   world(): WorldView | null;
   refreshChain(): Promise<void>;
   snapshotMeta(): Record<string, unknown>;
+  /// the snapshot file's bytes as saveSnapshot would write them now
+  snapshotBytes(): Buffer;
   /// what the engine knows about a larva that may not be on chain yet
   engineLarva(id: number): { generation: number; lineage: number; genomeHash: string } | null;
   log(line: string): void;
 };
+
+/// What the server knows before the world is built. The port is bound
+/// first so a supervisor sees `replaying` (503) instead of a refused
+/// connection while the journal replays; `ctx` is set once the world is live.
+export type Boot = { ctx: WorldContext | null; tick: number; target: number };
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
@@ -55,6 +69,12 @@ const AUTH_RATE = { max: 5, windowMs: 60_000 };
 const TRUST_PROXY = process.env.INSTAR_TRUST_PROXY === "1";
 const AIRDROP_LAMPORTS = BigInt(LAMPORTS_PER_SOL);
 const SNAPSHOT_CACHE_MS = 5000;
+/// /api/health: a queue whose head has not moved for this long is stuck
+const STUCK_AFTER_MS = 15 * 60_000;
+const RPC_PROBE_MS = 5000;
+/// /api/health is unauthenticated: the RPC probe behind it is shared by
+/// every request inside this window, so the cost per request is nothing
+const HEALTH_PROBE_CACHE_MS = 10_000;
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -65,15 +85,105 @@ const lamports = (v: bigint) => v.toString();
 function larvaJson(c: CreatureView) {
   return {
     id: c.id, asset: c.asset.toBase58(), keeper: c.keeper.toBase58(), status: c.status, statusName: STATUS_NAME[c.status],
-    vault: lamports(c.vault), salePrice: lamports(c.salePrice), listedAt: c.listedAt, generation: c.generation,
+    vault: lamports(c.vault), salePrice: lamports(c.salePrice), listedBy: c.listedBy.toBase58(), listedAt: c.listedAt, generation: c.generation,
     parentId: c.parentId, pendingCull: c.pendingCull, birthTick: c.birthTick, deathTick: c.deathTick,
     genomeHash: c.genomeHash,
   };
 }
 
-export function createServer(ctx: WorldContext): http.Server {
+export function createServer(boot: Boot): http.Server {
+  let live: ReturnType<typeof handler> | null = null;
+  return http.createServer((req, res) => {
+    if (boot.ctx) {
+      live ??= handler(boot.ctx);
+      return live(req, res);
+    }
+    const route = (req.url ?? "/").split("?")[0];
+    res.setHeader("content-type", "application/json");
+    res.setHeader("cache-control", "no-cache");
+    res.writeHead(503);
+    res.end(JSON.stringify(route === "/api/health"
+      ? { ok: false, phase: "replaying", tick: boot.tick, target: boot.target }
+      : { error: "the world is replaying its record; try again shortly", phase: "replaying", tick: boot.tick, target: boot.target }));
+  });
+}
+
+function handler(ctx: WorldContext) {
   const authHits = new Map<string, number[]>();
   let snapCache: { gz: Buffer; at: number } | null = null;
+  const idlJson = JSON.stringify(loadIdl());
+
+  const withTimeout = <T,>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`no answer in ${ms} ms`)), ms);
+    p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+
+  type Probe = { rpc: { ok: boolean; slot: number | null; error?: string }; operatorSol: string };
+  let probeCache: { at: number; result: Promise<Probe> } | null = null;
+  const probe = (): Promise<Probe> => {
+    const now = Date.now();
+    if (probeCache && now - probeCache.at < HEALTH_PROBE_CACHE_MS) return probeCache.result;
+    const result = withTimeout(Promise.all([
+      ctx.chain.connection.getSlot("confirmed"),
+      ctx.chain.balance(ctx.chain.operator.publicKey),
+    ]), RPC_PROBE_MS).then(
+      ([slot, balance]): Probe => ({ rpc: { ok: true, slot }, operatorSol: formatSol(balance) }),
+      (e: any): Probe => ({ rpc: { ok: false, slot: null, error: String(e?.message ?? e).slice(0, 120) }, operatorSol: formatSol(ctx.ops.operatorBalance) }),
+    );
+    probeCache = { at: now, result };
+    return result;
+  };
+
+  /// What a supervisor needs: is the clock running, is the chain being
+  /// written, can the RPC be reached. `ok` is false (and the status 503)
+  /// when settlement has held one op for STUCK_AFTER_MS or the RPC does not
+  /// answer; a broke operator with nothing queued is reported, not failed.
+  const health = async () => {
+    const j = ctx.store.journal;
+    const now = Date.now();
+    const expectedTick = ctx.startedAt.tick + Math.floor(((now - ctx.startedAt.wall) / 1000) * j.tickrate);
+    const lastEpochTx = j.txlog.filter(t => t.kind === "epoch" && t.ok).pop();
+    const { rpc, operatorSol } = await probe();
+    const stuck = ctx.ops.stuckForMs > STUCK_AFTER_MS;
+    return {
+      ok: rpc.ok && !stuck, phase: "live",
+      tick: ctx.tick(), ticksBehindWallClock: Math.max(0, expectedTick - ctx.tick()),
+      lastEpochPostedAgoS: lastEpochTx ? Math.floor((now - lastEpochTx.t) / 1000) : null,
+      pendingOps: ctx.ops.length, stuckForS: Math.floor(ctx.ops.stuckForMs / 1000), settling: !ctx.ops.outOfGas,
+      operatorSol, journalOk: !ctx.store.persistFailed, rpc,
+    };
+  };
+
+  /// The same archive scripts/backup.mts makes, from the live objects: the
+  /// snapshot is taken first and the journal right after, in one turn of
+  /// the event loop, so the pair is consistent and resumes rather than
+  /// replays. The .bak files, genesis.lock and the quarantine file have no
+  /// live object and come from the disk.
+  const backupArchive = (): Buffer => {
+    const now = Date.now();
+    const { accounts, sessions } = ctx.accounts.serialize();
+    const liveEntries: Record<string, Buffer> = {
+      "snapshot.bin": ctx.snapshotBytes(),
+      "journal.json": Buffer.from(JSON.stringify(ctx.store.journal)),
+      "accounts.json": Buffer.from(accounts),
+      "sessions.json": Buffer.from(sessions),
+    };
+    const entries: ArchiveEntry[] = [];
+    for (const name of BACKUP_FILES) {
+      if (liveEntries[name]) { entries.push({ name, data: liveEntries[name], mtime: now }); continue; }
+      const file = path.join(ctx.dataDir, name);
+      if (!fs.existsSync(file)) continue;
+      entries.push({ name, data: fs.readFileSync(file), mtime: fs.statSync(file).mtimeMs });
+    }
+    return gzipArchive(entries);
+  };
+
+  /// Constant time, length included: a mismatch must not say how much matched.
+  const adminAuthorized = (given: string | undefined) => {
+    if (!ctx.adminToken || !given) return false;
+    const a = crypto.createHash("sha256").update(given).digest(), b = crypto.createHash("sha256").update(ctx.adminToken).digest();
+    return crypto.timingSafeEqual(a, b);
+  };
 
   const rateLimit = (ip: string) => {
     const now = Date.now();
@@ -309,12 +419,13 @@ export function createServer(ctx: WorldContext): http.Server {
     if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
     res.setHeader("content-type", MIME[path.extname(full).toLowerCase()] ?? "application/octet-stream");
     res.setHeader("cache-control", isData ? "public, max-age=3600" : "no-cache");
+    res.setHeader("x-frame-options", "DENY");
     res.writeHead(200);
     res.end(fs.readFileSync(full));
     return true;
   }
 
-  return http.createServer(async (req, res) => {
+  return async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     const origin = req.headers.origin;
     if (origin && ctx.corsOrigin && origin === ctx.corsOrigin) {
@@ -365,6 +476,38 @@ export function createServer(ctx: WorldContext): http.Server {
             tick: ctx.tick(), population: e.popCount, maxGen: e.maxGeneration, capacity: ctx.capacity(),
             epoch: ctx.lastEpoch(), light: e.sim.light_now(), temp: e.sim.temp_now(), pendingOps: ctx.ops.length,
           });
+        }
+        if (route === "/api/health") {
+          const h = await health();
+          res.setHeader("cache-control", "no-cache");
+          return json(h.ok ? 200 : 503, h);
+        }
+        if (route === "/api/backup") {
+          // the operator's off-host copy of the record: the whole custody
+          // file is in it, so the token gate is the only thing between it
+          // and the internet. Unset token: the route does not exist.
+          if (!ctx.adminToken) return json(404, { error: "no such route" });
+          const q = new URL(url, "http://x").searchParams.get("token") ?? undefined;
+          if (!adminAuthorized(q ?? bearer(req))) return json(403, { error: "forbidden" });
+          const tgz = backupArchive();
+          const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
+          res.setHeader("content-type", "application/gzip");
+          res.setHeader("content-disposition", `attachment; filename="instar-${ctx.cluster}-${stamp}.tgz"`);
+          res.setHeader("cache-control", "no-store");
+          res.writeHead(200);
+          res.end(tgz);
+          ctx.log(`backup served (${(tgz.length / 1e6).toFixed(2)} MB) to ${clientIp(req)}`);
+          return;
+        }
+        if (route === "/api/idl") {
+          // the program's IDL, for a wallet or a mirror that builds its own
+          // transactions against this world; short-lived so a program
+          // rotation reaches open pages within a minute
+          res.setHeader("cache-control", "public, max-age=60");
+          res.setHeader("content-type", "application/json");
+          res.writeHead(200);
+          res.end(idlJson);
+          return;
         }
         if (route === "/api/snapshot") {
           // join the world instantly instead of replaying it
@@ -436,5 +579,5 @@ export function createServer(ctx: WorldContext): http.Server {
       }
       json(400, { error: msg.slice(0, 200) });
     }
-  });
+  };
 }

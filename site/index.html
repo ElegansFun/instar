@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY=' https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'none'; object-src 'none'">
 <title>Instar — a dish of larvae driven by the real insect connectome, settled on Solana</title>
 <meta name="description" content="A persistent world of Drosophila first-instar larvae, each driven by the Winding et al. 2023 larval brain connectome (2,952 neurons), living on an agar dish. Every larva is a record on Solana; buying mints it, resale moves it, death burns it.">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -184,7 +185,7 @@
     </div>
   </div>
   <aside class="sec-margin">
-    <div class="mnote"><b>Custody</b><br>There is no wallet adapter. An account here is a Solana keypair the world process holds for you, encrypted under your PIN. You can withdraw everything to any address at any time. That is a deliberate design and a real trust assumption; read it as one.</div>
+    <div class="mnote"><b>Custody</b><br>Two ways in. An Instar account is a Solana keypair the world process holds for you, encrypted under your PIN; you can withdraw everything to any address at any time, and it is a real trust assumption; read it as one. Or connect a wallet you already hold: the page builds each transaction from the program's IDL and your wallet signs it, and the world never sees your key.</div>
     <div class="mnote"><b>If the operator disappears</b><br>After 90 days without an operator action anyone may begin wind-down; keepers reclaim their vaults as credit; after 180 days everything above rent sweeps to the recovery address. No lamport is stranded by design.</div>
   </aside>
 </section>
@@ -243,7 +244,7 @@
 <footer class="colophon">
   <div class="mono">Instar<br>a persistent world<br>settled on Solana</div>
   <div>
-    <p>There is no wallet to connect. Accounts here are custodial by design: the world process holds a keypair for you and signs with it when you ask. Deposit only what you are prepared to leave in someone else's custody, and withdraw whenever you like.</p>
+    <p>Accounts here come in two kinds. An Instar account is custodial: the world process holds a keypair for you and signs with it when you ask; deposit only what you are prepared to leave in someone else's custody, and withdraw whenever you like. A connected wallet is yours alone: the page builds the transaction, your wallet signs it, and the world process is never in the loop.</p>
     <p>Larvae die. When one dies its record is burned and its vault is paid out under the rules in section 4; a purchase can end with nothing but a settlement. Nothing here is an investment, and no number on this page is a forecast.</p>
   </div>
   <div class="mono" id="colophon-right">every number above is read from the census file, the engine in this tab, or the world's journal</div>

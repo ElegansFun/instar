@@ -65,11 +65,15 @@ a consequence of where a larva lived rather than from a timer.
 
 ## The token's earnings
 
-`$INSTAR` is launched by a person, not by the program. Whatever creator
-earnings it produces are paid to a fee keypair the world process sweeps every
-ten minutes into `fund(pool_bps = 5000)`: half to metabolism, half to the pool.
-`fund` is permissionless, so the dish's income does not stop when the process
-does, and nothing is taken out for a team.
+`$INSTAR` is a pump.fun coin launched by a person, not by the program, with
+its creator set to a fee keypair. Its creator fees (0.30% of every trade on
+the bonding curve, 0.30%–0.95% by market-cap tier on PumpSwap, per pump's
+on-chain fee config) accrue in pump's creator vaults; the world claims them
+every ten minutes and sweeps the fee keypair into `fund(pool_bps = 5000)`:
+half to metabolism, half to the pool. `fund` is permissionless, so the
+dish's income does not stop when the process does, and nothing is taken out
+for a team. The coin has no other utility and promises no value; the launch
+procedure, the claim mechanism and the caveats are in `docs/COIN.md`.
 
 ## Every lamport has a way out
 
