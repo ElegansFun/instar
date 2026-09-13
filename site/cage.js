@@ -729,6 +729,7 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
       if (live.settling === false) html = `<b class="bad">SETTLEMENT PAUSED</b>`;
       else if (stream.state === "lost") html = `<b class="bad">STREAM LOST</b> reconnecting`;
       else if (stream.state === "stalled") html = `<b class="warn">STREAM STALLED</b> no frame for 3 s`;
+      else if (stream.state === "reconnecting") html = `<b class="warn">STREAM DROPPED</b> reconnecting`;
       else if (stream.state !== "live") html = `<b class="warn">CONNECTING</b> to the stream`;
       else if (v) html = `<b class="${v.cls}">${v.word}</b> ${esc(v.detail)}`;
       else html = `<b>LIVE</b> ${esc(live.cluster)} \u00b7 unverified by this page`;

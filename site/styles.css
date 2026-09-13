@@ -116,7 +116,7 @@ sup { font-family: var(--mono); font-size: 0.6em; vertical-align: super; line-he
 .title-block .abstract { font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--ink-2); border-left: 1px solid var(--rule-strong); padding-left: 16px; }
 .title-block .abstract b { color: var(--ink); font-weight: 500; }
 
-/* ---------- live figure (the dish) ---------- */
+/* ---------- live figure (the cage) ---------- */
 .figure { margin: 0; border-top: 1px solid var(--ink); padding-top: 10px; }
 .figure .fig-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; margin-bottom: 8px; }
 .figure .fig-label { text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-2); }
@@ -124,12 +124,12 @@ sup { font-family: var(--mono); font-size: 0.6em; vertical-align: super; line-he
 .figure .status b { font-weight: 500; color: var(--ink); }
 .figure .status .ok { color: var(--chain); }
 .figure .status .bad { color: #9b2f1b; }
-.dish-frame { position: relative; height: 60vh; min-height: 380px; border: 1px solid var(--ink); background: var(--yeast); overflow: hidden; }
-.dish-frame canvas { width: 100%; height: 100%; display: block; }
-.dish-frame .overlay-note { position: absolute; left: 12px; bottom: 10px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); background: rgba(243, 238, 227, 0.85); padding: 4px 8px; }
-.dish-frame .enter { position: absolute; right: 12px; bottom: 10px; }
-.dish-frame .enter a { border: 1px solid var(--ink); background: var(--paper); padding: 6px 12px; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; }
-.dish-frame .enter a:hover { background: var(--ink); color: var(--paper); }
+.cage-frame { position: relative; height: 60vh; min-height: 380px; border: 1px solid var(--ink); background: var(--yeast); overflow: hidden; }
+.cage-frame canvas { width: 100%; height: 100%; display: block; }
+.cage-frame .overlay-note { position: absolute; left: 12px; bottom: 10px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); background: rgba(243, 238, 227, 0.85); padding: 4px 8px; }
+.cage-frame .enter { position: absolute; right: 12px; bottom: 10px; }
+.cage-frame .enter a { border: 1px solid var(--ink); background: var(--paper); padding: 6px 12px; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.cage-frame .enter a:hover { background: var(--ink); color: var(--paper); }
 .figure figcaption { font-size: 15px; color: var(--ink-2); margin-top: 10px; max-width: 80ch; }
 .figure figcaption b { color: var(--ink); font-weight: 400; }
 
@@ -211,7 +211,7 @@ footer.colophon .mono { font-size: 11px; line-height: 1.7; }
   .masthead nav { justify-self: start; flex-wrap: wrap; gap: 12px; }
   .masthead .running-head { display: none; }
   .measure-grid { grid-template-columns: 1fr; }
-  .dish-frame { height: 52vh; min-height: 300px; }
+  .cage-frame { height: 52vh; min-height: 300px; }
   section.sec > .sec-body, section.sec > .sec-margin { min-width: 0; }
   section.sec > .sec-body h2 { font-size: 28px; }
   table.data { font-size: 11.5px; table-layout: fixed; }

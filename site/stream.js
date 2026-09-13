@@ -80,7 +80,6 @@ export class Stream {
     frame.at = at;
     // the first frame is doubled so there is always a pair to sample between
     this.prev = this.next || frame;
-    this.next = frame;
     this.frames++;
     this.t = frame.t;
     this.light = frame.light;
@@ -88,7 +87,9 @@ export class Stream {
     this.setState("live");
     clearTimeout(this.stallTimer);
     this.stallTimer = setTimeout(() => this.setState("stalled"), STALL_MS);
-    if (frame.events) for (const e of frame.events) this.onEvent(e);
+    // the first frame carries the world's recent event history; only what
+    // happened at or just before joining is news
+    if (frame.events) for (const e of frame.events) if (this.frames > 1 || e.tick >= frame.t - 40) this.onEvent(e);
     this.onFrame(frame);
   }
 

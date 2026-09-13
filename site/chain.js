@@ -158,31 +158,31 @@ export class Program {
     return out;
   }
 
-  // ---- the keeper's instructions; `larva` is a /api/journal larvae[] record ----
-  buy(buyer, larva, price) {
-    const hasParent = larva.parentId !== undefined && larva.parentId !== null && larva.parentId !== -1 && larva.parentId !== "none";
-    return this.instruction("buy", { id: larva.id, price }, {
-      world: this.worldPda, buyer, creature: this.creaturePda(larva.id),
-      parent: hasParent ? this.creaturePda(larva.parentId) : null,
-      asset: larva.asset, collection: this.collection,
+  // ---- the keeper's instructions; `fly` is a /api/journal flies[] record ----
+  buy(buyer, fly, price) {
+    const hasParent = fly.parentId !== undefined && fly.parentId !== null && fly.parentId !== -1 && fly.parentId !== "none";
+    return this.instruction("buy", { id: fly.id, price }, {
+      world: this.worldPda, buyer, creature: this.creaturePda(fly.id),
+      parent: hasParent ? this.creaturePda(fly.parentId) : null,
+      asset: fly.asset, collection: this.collection,
     });
   }
-  buyListed(buyer, larva, price) {
-    if (!larva.listedBy || larva.listedBy === "11111111111111111111111111111111") throw new Error(`#${larva.id} is not listed`);
-    return this.instruction("buy_listed", { id: larva.id, price }, {
-      world: this.worldPda, buyer, creature: this.creaturePda(larva.id), asset: larva.asset, collection: this.collection,
-      seller_credit: this.creditPda(larva.listedBy),
+  buyListed(buyer, fly, price) {
+    if (!fly.listedBy || fly.listedBy === "11111111111111111111111111111111") throw new Error(`#${fly.id} is not listed`);
+    return this.instruction("buy_listed", { id: fly.id, price }, {
+      world: this.worldPda, buyer, creature: this.creaturePda(fly.id), asset: fly.asset, collection: this.collection,
+      seller_credit: this.creditPda(fly.listedBy),
     });
   }
-  list(owner, larva, price) {
-    return this.instruction("list", { id: larva.id, price }, { signer: owner, creature: this.creaturePda(larva.id), asset: larva.asset });
+  list(owner, fly, price) {
+    return this.instruction("list", { id: fly.id, price }, { signer: owner, creature: this.creaturePda(fly.id), asset: fly.asset });
   }
-  unlist(owner, larva) {
-    return this.instruction("unlist", { id: larva.id }, { signer: owner, creature: this.creaturePda(larva.id), asset: larva.asset });
+  unlist(owner, fly) {
+    return this.instruction("unlist", { id: fly.id }, { signer: owner, creature: this.creaturePda(fly.id), asset: fly.asset });
   }
-  requestCull(owner, larva) {
-    return this.instruction("request_cull", { id: larva.id }, {
-      world: this.worldPda, owner, creature: this.creaturePda(larva.id), asset: larva.asset, collection: this.collection,
+  requestCull(owner, fly) {
+    return this.instruction("request_cull", { id: fly.id }, {
+      world: this.worldPda, owner, creature: this.creaturePda(fly.id), asset: fly.asset, collection: this.collection,
     });
   }
   withdraw(owner) {
@@ -193,13 +193,13 @@ export class Program {
   // log wrapper. Core's absent optional accounts are its own program id, so
   // the authority slot is the program id (the payer is the owner and signs)
   // and so is the log wrapper.
-  transferAsset(owner, larva, to) {
+  transferAsset(owner, fly, to) {
     const { TransactionInstruction, SystemProgram, PublicKey } = w3();
     const core = new PublicKey(MPL_CORE);
     const out = new TransactionInstruction({
       programId: core,
       keys: [
-        { pubkey: this.pk(larva.asset), isSigner: false, isWritable: true },
+        { pubkey: this.pk(fly.asset), isSigner: false, isWritable: true },
         { pubkey: this.collection, isSigner: false, isWritable: false },
         { pubkey: this.pk(owner), isSigner: true, isWritable: true },
         { pubkey: core, isSigner: false, isWritable: false },

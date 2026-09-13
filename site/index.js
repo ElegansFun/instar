@@ -105,6 +105,7 @@ async function loadCensusHeader() {
       if (live.settling === false) html = `<b class="bad">SETTLEMENT PAUSED</b> operator out of gas`;
       else if (stream.state === "lost") html = `<b class="bad">STREAM LOST</b> reconnecting`;
       else if (stream.state === "stalled") html = `<b>STREAM STALLED</b> no frame for 3 s`;
+      else if (stream.state === "reconnecting") html = `<b>STREAM DROPPED</b> reconnecting`;
       else if (stream.state !== "live") html = `<b>CONNECTING</b>`;
       else if (vd) html = `<b class="${vd.cls}">${vd.word}</b> ${esc(vd.detail)}`;
       else html = `<b>LIVE</b> unverified: no verifier result posted`;

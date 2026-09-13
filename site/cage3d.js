@@ -190,7 +190,7 @@ export class Cage3D {
     const renderer = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
 
@@ -704,7 +704,7 @@ export class Cage3D {
     this.fill.intensity = 0.06 + 0.34 * l;
     this.scene.environmentIntensity = 0.12 + 0.6 * l;
     this.scene.background.setRGB(0.62 * (0.22 + 0.78 * l), 0.60 * (0.24 + 0.76 * l), 0.56 * (0.34 + 0.66 * l));
-    this.cone.material.opacity = 0.008 + 0.035 * (1 - l);
+    this.cone.material.opacity = 0.004 + 0.03 * l;
   }
 
   // ---------- picking ----------
