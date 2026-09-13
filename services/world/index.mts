@@ -91,7 +91,9 @@ async function buildWorld() {
   const operator = loadKeypair(OPERATOR_KEYPAIR);
   const chain = new Chain({ cluster: CLUSTER, rpc: process.env.INSTAR_RPC, programId: process.env.INSTAR_PROGRAM_ID, operator });
   log(`cluster ${CLUSTER}  program ${chain.programId.toBase58()}  world ${chain.worldPda.toBase58()}`);
-  log(`rpc ${chain.rpcUrl}${process.env.INSTAR_RPC || CLUSTER === "localnet" ? "" : "  (public endpoint — set INSTAR_RPC to move off it)"}`);
+  // provider keys ride in the query string; logs must never carry them
+  const rpcShown = chain.rpcShown;
+  log(`rpc ${rpcShown}${process.env.INSTAR_RPC || CLUSTER === "localnet" ? "" : "  (public endpoint — set INSTAR_RPC to move off it)"}`);
   try {
     log(`operator ${operator.publicKey.toBase58()} — ${formatSol(await chain.balance(operator.publicKey))} SOL`);
   } catch {

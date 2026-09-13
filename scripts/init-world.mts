@@ -55,7 +55,7 @@ if (cluster !== "localnet" && /localhost|127\.0\.0\.1/.test(collectionUri)) {
 }
 
 const chain = new Chain({ cluster, rpc: process.env.INSTAR_RPC, programId: process.env.INSTAR_PROGRAM_ID, operator });
-console.log(`cluster:  ${cluster} (${chain.rpcUrl})`);
+console.log(`cluster:  ${cluster} (${chain.rpcShown})`);
 console.log(`program:  ${chain.programId.toBase58()}`);
 console.log(`world:    ${chain.worldPda.toBase58()}`);
 console.log(`operator: ${operator.publicKey.toBase58()} (${formatSol(await chain.balance(operator.publicKey))})`);

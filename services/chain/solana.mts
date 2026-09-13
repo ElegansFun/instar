@@ -195,6 +195,9 @@ function coreBurn(asset: PublicKey, collection: PublicKey, owner: PublicKey): Tr
 export class Chain {
   readonly cluster: Cluster;
   readonly rpcUrl: string;
+  /// The endpoint without its query string: provider keys ride there, and
+  /// this is what logs and CLIs print.
+  get rpcShown(): string { return this.rpcUrl.replace(/\?.*$/, "?…"); }
   readonly connection: Connection;
   readonly programId: PublicKey;
   readonly program: Program<Instar>;

@@ -9,7 +9,7 @@ __pycache__/
 .env.*
 !.env.mainnet.example
 .keys/
-data/world/
+data/world*/
 data/raw/
 *.log
 .DS_Store

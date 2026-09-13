@@ -137,12 +137,12 @@ async function assertEndpoint(chain: Chain) {
   const expect = GENESIS[cluster];
   if (!expect) return;
   const genesis = await chain.connection.getGenesisHash();
-  if (genesis !== expect) throw new Error(`INSTAR_RPC ${chain.rpcUrl} is not a ${cluster} endpoint (genesis ${genesis}, expected ${expect}) — nothing sent`);
+  if (genesis !== expect) throw new Error(`INSTAR_RPC ${chain.rpcShown} is not a ${cluster} endpoint (genesis ${genesis}, expected ${expect}) — nothing sent`);
 }
 
 /// Say what is about to happen; send only with --yes.
 async function act(chain: Chain, plan: string[], send: () => Promise<string>) {
-  console.log(`about to send on ${cluster} (${chain.rpcUrl}):`);
+  console.log(`about to send on ${cluster} (${chain.rpcShown}):`);
   for (const p of plan) console.log(`  ${p}`);
   // exitCode rather than exit(): on Windows, exit() under an RPC socket
   // still closing trips a libuv assertion
@@ -155,7 +155,7 @@ async function act(chain: Chain, plan: string[], send: () => Promise<string>) {
 }
 
 async function status(chain: Chain, operator: Keypair) {
-  console.log(`cluster:   ${cluster} (${chain.rpcUrl})`);
+  console.log(`cluster:   ${cluster} (${chain.rpcShown})`);
   console.log(`program:   ${chain.programId.toBase58()}`);
   console.log(`world:     ${chain.worldPda.toBase58()}`);
   console.log(`signer:    ${operator.publicKey.toBase58()} (${formatSol(await chain.balance(operator.publicKey))} SOL)`);
@@ -322,7 +322,7 @@ async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
     if (!yes) process.exitCode = 2;
   };
 
-  console.log(`recover-all on ${cluster} (${chain.rpcUrl}) -> ${to.toBase58()}`);
+  console.log(`recover-all on ${cluster} (${chain.rpcShown}) -> ${to.toBase58()}`);
   console.log(`timers: abandonment ${DAYS(ABANDONED_AFTER_S)}, escheat ${DAYS(ESCHEAT_AFTER_S)} after wind-down${shortTimers ? " (short-timers artifact on disk)" : ""}\n`);
   if (yes) await assertEndpoint(chain);
 
@@ -462,7 +462,8 @@ async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
     line("6", "program close", `${sol(program.lamports)} of program rent; upgrade authority ${authority?.toBase58() ?? "none (immutable: this rent is gone for good)"}`);
     if (authority) {
       note("run from Windows, signed by that key:");
-      note(`wsl -d Ubuntu-24.04 -u root -- bash ${wslPath(path.join(root, "scripts", "wsl-close-program.sh"))} ${cluster} ${to.toBase58()} ${chain.rpcUrl} ${wslPath(deployerPath)}`);
+      note(`wsl -d Ubuntu-24.04 -u root -- bash ${wslPath(path.join(root, "scripts", "wsl-close-program.sh"))} ${cluster} ${to.toBase58()} "$INSTAR_RPC" ${wslPath(deployerPath)}`);
+      note("(INSTAR_RPC is your keyed endpoint; it is deliberately not printed)");
       note("FINAL: the program id can never be deployed to again. Then run recover-all once more for the operator's last lamports.");
     }
   }
@@ -484,7 +485,7 @@ async function sweepCustodial(chain: Chain, operator: Keypair, w: WorldView, to:
   const wallets = new Map(held.filter(h => h.keypair).map(h => [h.keypair!.publicKey.toBase58(), h]));
   const kept = nfts ? (await chain.creatures({ from: 0, to: w.nextId })).filter(c => c.status !== STATUS.DEAD && wallets.has(c.keeper.toBase58())) : [];
   const larvaeOf = (h: Holding) => kept.filter(c => h.keypair && c.keeper.equals(h.keypair.publicKey));
-  console.log(`sweep-custodial on ${cluster} (${chain.rpcUrl}): ${held.length} wallet(s) in ${accountsFile()} -> ${to.toBase58()}`);
+  console.log(`sweep-custodial on ${cluster} (${chain.rpcShown}): ${held.length} wallet(s) in ${accountsFile()} -> ${to.toBase58()}`);
   console.log(`fees paid by ${operator.publicKey.toBase58()} (${formatSol(await chain.balance(operator.publicKey))} SOL)\n`);
   let total = 0n;
   for (const h of held) {

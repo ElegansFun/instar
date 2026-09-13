@@ -104,7 +104,8 @@ ok("bad token / no token rejected with 401");
 const drop = (await post("/api/airdrop", {}, a1.token)).json;
 assert.ok(drop.ok, JSON.stringify(drop));
 let me = (await post("/api/me", {}, a1.token)).json;
-assert.ok(BigInt(me.balance) >= BigInt(LAMPORTS_PER_SOL) / 2n, `balance ${me.balance}`);
+// localnet airdrops 1 SOL; devnet may fall back to a 0.2 SOL operator top-up
+assert.ok(BigInt(me.balance) >= BigInt(LAMPORTS_PER_SOL) / 6n, `balance ${me.balance}`);
 ok(`airdrop -> balance ${me.balance} lamports`);
 
 // ---- buy the first larva on offer --------------------------------------------

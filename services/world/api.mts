@@ -68,6 +68,9 @@ const AUTH_RATE = { max: 5, windowMs: 60_000 };
 /// element (the one the proxy itself appended; earlier ones are client-supplied).
 const TRUST_PROXY = process.env.INSTAR_TRUST_PROXY === "1";
 const AIRDROP_LAMPORTS = BigInt(LAMPORTS_PER_SOL);
+/// Devnet's faucet rate-limits by IP; when it refuses, the operator tops the
+/// account up from its own devnet SOL, enough to buy a larva and cash out.
+const DEVNET_TOPUP_LAMPORTS = BigInt(LAMPORTS_PER_SOL) / 5n;
 const SNAPSHOT_CACHE_MS = 5000;
 /// /api/health: a queue whose head has not moved for this long is stuck
 const STUCK_AFTER_MS = 15 * 60_000;
@@ -319,14 +322,16 @@ function handler(ctx: WorldContext) {
     if (url === "/api/airdrop") {
       if (ctx.cluster === "mainnet-beta") throw new HttpError(400, "mainnet — deposit SOL to your own address instead");
       const held = await ctx.chain.balance(me);
-      if (held >= AIRDROP_LAMPORTS) return { ok: true, funded: false, note: "already funded", balance: lamports(held) };
+      const target = ctx.cluster === "localnet" ? AIRDROP_LAMPORTS : DEVNET_TOPUP_LAMPORTS;
+      if (held >= target) return { ok: true, funded: false, note: "already funded", balance: lamports(held) };
       let sig: string;
       try {
         sig = await ctx.chain.airdrop(me, AIRDROP_LAMPORTS);
         ctx.store.logTx("airdrop", sig, true);
       } catch (e: any) {
-        if (ctx.cluster !== "localnet") throw new HttpError(503, `airdrop refused by the RPC (${String(e?.message ?? e).slice(0, 80)}) — try https://faucet.solana.com`);
-        sig = await ctx.chain.sendFromOperator(me, AIRDROP_LAMPORTS - held);
+        const opBalance = await ctx.chain.balance(ctx.chain.operator.publicKey);
+        if (opBalance < target * 5n) throw new HttpError(503, `airdrop refused by the RPC (${String(e?.message ?? e).slice(0, 80)}) — try https://faucet.solana.com`);
+        sig = await ctx.chain.sendFromOperator(me, target - held);
         ctx.store.logTx("airdrop", sig, true);
       }
       ctx.store.persist();

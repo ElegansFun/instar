@@ -41,7 +41,7 @@ if (!fs.existsSync(OPERATOR)) {
 }
 const operator = loadKeypair(OPERATOR);
 const chain = new Chain({ cluster: CLUSTER, rpc: process.env.INSTAR_RPC, operator });
-console.log(`cluster ${CLUSTER}  rpc ${chain.rpcUrl}  program ${chain.programId.toBase58()}`);
+console.log(`cluster ${CLUSTER}  rpc ${chain.rpcShown}  program ${chain.programId.toBase58()}`);
 
 let step = 0;
 const ok = (what: string) => console.log(`  ok ${String(++step).padStart(2)}  ${what}`);
@@ -73,7 +73,7 @@ if (!(await chain.worldExists())) {
   ok(`init_world ${sig.slice(0, 12)}`);
 } else if ((await chain.world()).nextId > 0) {
   console.error(
-    `the World at ${chain.rpcUrl} already holds larvae — it belongs to a running world process.\n` +
+    `the World at ${chain.rpcShown} already holds larvae — it belongs to a running world process.\n` +
     `verify needs a scratch validator: npm run localnet -- 8999, then INSTAR_RPC=http://127.0.0.1:8999 npm run verify`
   );
   process.exit(2);

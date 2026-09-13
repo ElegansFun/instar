@@ -14,10 +14,16 @@ echo "cluster:    $CLUSTER ($RPC)"
 echo "program:    $PROGRAM_ID"
 echo "deployer:   $(solana-keygen pubkey "$DEPLOYER") ($(solana balance --url "$RPC" --keypair "$DEPLOYER"))"
 
+# Public RPCs rate-limit the hundreds of buffer writes a deploy needs. Send
+# them over RPC (not the TPU), keep retrying, and use a modest priority fee.
+# A failed attempt leaves a buffer account holding the program's rent: close
+# any such buffers of ours first so the SOL is back before we try again.
+solana program close --buffers --url "$RPC" --keypair "$DEPLOYER" --recipient "$(solana-keygen pubkey "$DEPLOYER")" 2>/dev/null || true
 solana program deploy \
   --url "$RPC" --keypair "$DEPLOYER" \
   --program-id target/deploy/instar-keypair.json \
   --upgrade-authority "$DEPLOYER" \
+  --use-rpc --max-sign-attempts 200 --with-compute-unit-price 20000 \
   target/deploy/instar.so
 
 # A program deployed in slot N is callable from slot N+1; anchor's IDL

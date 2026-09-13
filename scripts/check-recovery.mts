@@ -23,7 +23,7 @@ const age = (s: number) => {
 };
 const when = (unix: number) => new Date(unix * 1000).toISOString();
 
-console.log(`cluster:   ${cluster} (${chain.rpcUrl})`);
+console.log(`cluster:   ${cluster} (${chain.rpcShown})`);
 console.log(`program:   ${chain.programId.toBase58()}`);
 console.log(`world:     ${chain.worldPda.toBase58()}`);
 if (!(await chain.worldExists())) {
