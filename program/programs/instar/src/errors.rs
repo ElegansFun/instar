@@ -34,4 +34,8 @@ pub enum InstarError {
     AssetMismatch,
     #[msg("the collection account is not the world's collection")]
     WrongCollection,
+    #[msg("the world has not escheated; records and credits are still live")]
+    NotEscheated,
+    #[msg("creature records or credits are still open; close them first")]
+    RecordsStillOpen,
 }

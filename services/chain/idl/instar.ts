@@ -329,6 +329,187 @@ export type Instar = {
       ]
     },
     {
+      "name": "closeCredit",
+      "discriminator": [
+        151,
+        225,
+        136,
+        142,
+        221,
+        237,
+        105,
+        183
+      ],
+      "accounts": [
+        {
+          "name": "world",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  111,
+                  114,
+                  108,
+                  100
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "credit",
+          "docs": [
+            "Any holder's credit, passed by address; no signature, since after",
+            "escheat it is empty and the World no longer backs it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  114,
+                  101,
+                  100,
+                  105,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "credit.owner",
+                "account": "credit"
+              }
+            ]
+          }
+        },
+        {
+          "name": "recovery",
+          "writable": true,
+          "relations": [
+            "world"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "closeRecord",
+      "discriminator": [
+        111,
+        192,
+        122,
+        188,
+        38,
+        234,
+        242,
+        249
+      ],
+      "accounts": [
+        {
+          "name": "world",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  111,
+                  114,
+                  108,
+                  100
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creature",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  114,
+                  101,
+                  97,
+                  116,
+                  117,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "recovery",
+          "writable": true,
+          "relations": [
+            "world"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "closeWorld",
+      "discriminator": [
+        250,
+        171,
+        64,
+        179,
+        30,
+        236,
+        152,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "world",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  111,
+                  114,
+                  108,
+                  100
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "recovery",
+          "writable": true,
+          "relations": [
+            "world"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "escheat",
       "discriminator": [
         186,
@@ -1749,6 +1930,16 @@ export type Instar = {
       "code": 6015,
       "name": "wrongCollection",
       "msg": "the collection account is not the world's collection"
+    },
+    {
+      "code": 6016,
+      "name": "notEscheated",
+      "msg": "the world has not escheated; records and credits are still live"
+    },
+    {
+      "code": 6017,
+      "name": "recordsStillOpen",
+      "msg": "creature records or credits are still open; close them first"
     }
   ],
   "types": [
@@ -2028,6 +2219,30 @@ export type Instar = {
           {
             "name": "windDownAt",
             "type": "i64"
+          },
+          {
+            "name": "escheated",
+            "docs": [
+              "Set by `escheat`: the ledger is zero and nothing is owed to anybody.",
+              "Only then may the records themselves be closed for their rent."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "closedRecords",
+            "docs": [
+              "Creature PDAs closed by `close_record`; the World may close once this",
+              "reaches `next_id`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "creditsOpen",
+            "docs": [
+              "Credit PDAs that exist: counted on first initialisation, uncounted by",
+              "`close_credit`. The World may close once this is zero."
+            ],
+            "type": "u64"
           },
           {
             "name": "bump",

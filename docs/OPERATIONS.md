@@ -7,7 +7,7 @@ rest of the world's life.
 Two tools carry every procedure below:
 
 ```
-npx tsx scripts/operator.mts <command> [args] [--yes] [--allow-fresh]     # every instruction the process does not send itself
+npx tsx scripts/operator.mts <command> [args] [--yes] [--allow-fresh] [--to <addr>] [--nfts]   # every instruction the process does not send itself
 npx tsx scripts/backup.mts [--pull <url> | --list f | --restore f [--force]]   # the record, out and back in
 ```
 
@@ -295,29 +295,41 @@ the ordinary course; this is for the extraordinary one.
 
 ## Winding the world down
 
-Deliberately, in this order. Every step is one-way.
+Deliberately, in this order. Every step is one-way; `docs/RECOVERY.md` is
+the whole procedure with what each step returns and to whom, and
+`recover-all` is the one command that drives it:
+
+```
+npx tsx scripts/operator.mts recover-all --to <recovery> --yes     # run it as often as it takes
+```
 
 1. **Announce it**, and stop selling: the site's copy is yours to change.
-2. `npx tsx scripts/operator.mts begin-wind-down --yes`. From this slot the
-   program refuses every birth, offer, sale, reward and `fund`; the process
-   logs `THE WORLD IS WINDING DOWN` and stops queueing new life. Deaths and
-   epochs still settle, so leave it running: every death moves a vault into
-   credits keepers can withdraw.
+2. `begin_wind_down` (`recover-all` step 1, or `begin-wind-down --yes`).
+   From this slot the program refuses every birth, offer, sale, reward and
+   `fund`; the process logs `THE WORLD IS WINDING DOWN` and stops queueing
+   new life. Deaths and epochs still settle, so leave it running: every
+   death moves a vault into credits keepers can withdraw.
 3. Keepers exit on their own: `reclaim_vault` (the site's button) turns a
    living larva's vault into their credit and burns the asset; `withdraw`
    takes credit out. Tell them, and give them the 180 days.
-4. `npx tsx scripts/operator.mts sweep-to-recovery --yes`: metabolism and
-   pool to the recovery address. Anyone may send this; it touches no vault
-   or credit.
-5. After 180 days: `npx tsx scripts/operator.mts escheat --yes`. Everything
-   above rent goes to recovery and the ledger is zeroed; any vault or credit
-   nobody claimed goes with it. `TooEarly` before then, and the command says
-   when.
-6. Stop the process, take a last backup, and keep it: every Creature record
-   and the burned assets' stubs stay readable on chain forever, and the
-   journal is the only replayable history of what those larvae did.
+4. `sweep_to_recovery` (step 2): metabolism and pool to the recovery
+   address. Anyone may send this; it touches no vault or credit.
+5. After 180 days: `escheat` (step 3). Everything above rent goes to
+   recovery and the ledger is zeroed; any vault or credit nobody claimed
+   goes with it. `TooEarly` before then, and the command prints the date.
+6. Stop the process and take a last backup; keep it: the journal is the
+   only replayable history of what those larvae did. Then
+   `sweep-custodial --to <recovery> [--nfts] --yes`: every custodial
+   wallet's SOL (and, with `--nfts`, its larvae) to recovery. It refuses
+   until the chain says `escheated`.
+7. `recover-all` again (step 4): every Creature and Credit PDA is closed
+   for its rent, then the World PDA; (step 5) the fee keypair and the
+   operator drain to recovery; (step 6) it prints the
+   `scripts/wsl-close-program.sh` command that returns the program's own
+   rent. Run that, then `recover-all` one last time.
 
 If the operator key is simply gone, the same sequence happens without you:
-after 90 days of silence anyone may call `begin_wind_down`, and steps 3 to 5
-need no operator at all. `recovery` is fixed once wind-down begins, so a
-stranger opening the exits cannot redirect them.
+after 90 days of silence anyone may call `begin_wind_down`, and steps 2 to
+5 and the closing of every account need no operator at all. `recovery` is
+fixed once wind-down begins, so a stranger opening the exits cannot redirect
+them; only the key drains and the program close need the keys themselves.

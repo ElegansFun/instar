@@ -13,14 +13,16 @@ simulation of anything.
 
 Every larva is a Metaplex Core NFT in the Instar collection; whoever owns the
 asset keeps the larva. It sits in the custodial wallet the world made for you,
-and you may move it to any wallet with a plain Core transfer. Every larva also
-has a **vault** inside the program, backed lamport for lamport by the World
-account. Its balance is that animal's accumulated worth: visible in the
-inspector, carried with the NFT when it changes hands, and paid out when it
-dies. The vault is paid to the owner of the asset at that moment, so list and
-keep larvae only in wallets you can sign with; an asset parked in a
-marketplace escrow at the moment of death forfeits the keeper's share to
-metabolism.
+and you may move it to any wallet with a plain Core transfer. If the world is
+wound down and you have not withdrawn 180 days later, what is left in your
+Instar account goes where the program's unclaimed funds go: the recovery
+address. Every larva also has a **vault** inside the program, backed lamport
+for lamport by the World account. Its balance is that animal's accumulated
+worth: visible in the inspector, carried with the NFT when it changes hands,
+and paid out when it dies. The vault is paid to the owner of the asset at that
+moment, so list and keep larvae only in wallets you can sign with; an asset
+parked in a marketplace escrow at the moment of death forfeits the keeper's
+share to metabolism.
 
 A newborn is offered at `0.005 SOL + 0.001 SOL × generation` (founders at
 twice the base). Buying it splits the price:
@@ -85,4 +87,6 @@ The rule the program is organised around, tested on every build:
 A keeper reclaims their own larva's vault with no operator alive; anyone sweeps
 the treasuries to recovery once the world is winding down; and 180 days after
 that, anything nobody came back for follows them rather than sitting unreachable
-forever. `docs/PROGRAM.md` lists the exits and the tests that state them.
+forever, and the accounts themselves are closed for their rent. `docs/PROGRAM.md`
+lists the exits and the tests that state them; `docs/RECOVERY.md` is the
+procedure, step by step, with what each returns and to whom.

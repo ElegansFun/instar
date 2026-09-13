@@ -95,6 +95,15 @@ pub struct World {
     pub last_operator_action: i64,
     pub wind_down: bool,
     pub wind_down_at: i64,
+    /// Set by `escheat`: the ledger is zero and nothing is owed to anybody.
+    /// Only then may the records themselves be closed for their rent.
+    pub escheated: bool,
+    /// Creature PDAs closed by `close_record`; the World may close once this
+    /// reaches `next_id`.
+    pub closed_records: u64,
+    /// Credit PDAs that exist: counted on first initialisation, uncounted by
+    /// `close_credit`. The World may close once this is zero.
+    pub credits_open: u64,
     pub bump: u8,
 }
 

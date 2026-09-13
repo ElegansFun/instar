@@ -48,6 +48,20 @@ export function resealAccounts(dir: string, current: Buffer, next: Buffer): numb
   return Object.keys(resealed).length;
 }
 
+/// Every custodial keypair in `dir`/accounts.json under `key`, read-only
+/// (no quarantine, nothing written). A record this key cannot open comes
+/// back with `keypair: null` so the caller can say so by name.
+export function custodialKeypairs(dir: string, key: Buffer): { user: string; keypair: Keypair | null }[] {
+  const file = path.join(dir, "accounts.json");
+  const accounts: Record<string, Account> = JSON.parse(fs.readFileSync(file, "utf8"));
+  return Object.entries(accounts).map(([user, a]) => {
+    try {
+      const secret = decrypt(key, a.enc);
+      return { user, keypair: secret.length === 64 ? Keypair.fromSecretKey(secret) : null };
+    } catch { return { user, keypair: null }; }
+  });
+}
+
 function encrypt(key: Buffer, secret: Uint8Array): Enc {
   const iv = crypto.randomBytes(12);
   const c = crypto.createCipheriv("aes-256-gcm", key, iv);

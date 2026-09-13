@@ -240,6 +240,9 @@ pub fn settle_death<'info>(
     if to_keeper > 0 {
         if let Some(keeper) = keeper {
             let credit = ctx.accounts.keeper_credit.as_mut().ok_or_else(|| error!(InstarError::WrongId))?;
+            if credit.owner == Pubkey::default() {
+                world.credits_open = add(world.credits_open, 1)?;
+            }
             credit.owner = keeper;
             credit.bump = ctx.bumps.keeper_credit.unwrap_or(credit.bump);
             credit.amount = add(credit.amount, to_keeper)?;
@@ -350,6 +353,9 @@ pub fn force_settle_cull(ctx: Context<ForceSettleCull>, _id: u64) -> Result<()> 
     world.total_credit = add(world.total_credit, to_keeper)?;
 
     let credit = &mut ctx.accounts.keeper_credit;
+    if credit.owner == Pubkey::default() {
+        world.credits_open = add(world.credits_open, 1)?;
+    }
     credit.owner = ctx.accounts.asset.owner;
     credit.bump = ctx.bumps.keeper_credit;
     credit.amount = add(credit.amount, to_keeper)?;

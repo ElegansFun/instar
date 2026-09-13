@@ -134,4 +134,16 @@ pub mod instar {
     pub fn escheat(ctx: Context<ToRecovery>) -> Result<()> {
         instructions::escheat(ctx)
     }
+
+    pub fn close_record(ctx: Context<CloseRecord>, id: u64) -> Result<()> {
+        instructions::close_record(ctx, id)
+    }
+
+    pub fn close_credit(ctx: Context<CloseCredit>) -> Result<()> {
+        instructions::close_credit(ctx)
+    }
+
+    pub fn close_world(ctx: Context<CloseWorld>) -> Result<()> {
+        instructions::close_world(ctx)
+    }
 }

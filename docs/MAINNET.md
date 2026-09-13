@@ -23,11 +23,21 @@ What that buys, in the deployed program, from the first slot:
 | your credit | you, via `withdraw`, always | no |
 | metabolism + pool | `withdraw_treasury` while running; `sweep_to_recovery` after | no |
 | anything nobody claims | `escheat` to recovery, 180 days after wind-down | no |
+| the rent of every record, credit and the World | `close_record`, `close_credit`, `close_world` to recovery, after escheat | no |
+| the program's own rent | `solana program close` to recovery, once the World is closed | the upgrade authority |
 
 The mechanism is a heartbeat. Every operator instruction refreshes it. After 90
 days of silence anyone may call `begin_wind_down`, which opens every exit at
 once. A stranger calling it cannot benefit: `recovery` is fixed at
 `init_world` and cannot change once the world is winding down.
+
+**When it is over.** The end of the world is one documented procedure,
+`docs/RECOVERY.md`, driven by `npx tsx scripts/operator.mts recover-all --to
+<recovery>`: wind-down, sweep, escheat after the 180 days, then every
+account closed for its rent, the keys drained, and the program closed for
+its own rent, with what each step returns and to whom. Custodial wallets
+follow the same 180-day rule (`sweep-custodial`), and the site says so
+where the account is made.
 
 ## 1. Keys
 
@@ -64,7 +74,7 @@ world already exist and who owns them, the engine, the site files and the
 role maps. It sends nothing. Every line must read `ok` or `next`.
 
 - [ ] `npm run sim:build` passes its gates on the engine you are about to ship
-- [ ] `npm run program:test`: 36 passing, including both recovery drills
+- [ ] `npm run program:test`: 40 passing, including both recovery drills and the closing of every account
 - [ ] `npm run verify` against a scratch validator, `npm run journey` against a local world
 - [ ] a devnet rehearsal (below) has run for at least a day with epochs verifying from a browser
 - [ ] `.keys/mainnet/` and `.keys/instar-program.json` are backed up offline

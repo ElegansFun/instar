@@ -24,7 +24,7 @@ import * as path from "path";
 import assert from "assert";
 import { fileURLToPath } from "url";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { Chain, MPL_CORE, ProgramError, STATUS, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
+import { CLOSE_BATCH, Chain, MPL_CORE, ProgramError, STATUS, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
 import { hash32 } from "../services/world/engine.mts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -367,4 +367,60 @@ ok("fund splits by pool_bps; sendSol exact, rent guard, and max empties the wall
 await assert.rejects(A.buy(w.nextId + 5, price), (e: any) => e instanceof ProgramError && e.name === "WrongId");
 ok("buying an id that was never born -> WrongId");
 
-console.log(`verify passed: ${step} checks, world holds ${formatSol(w.lamports)} SOL (metabolism ${formatSol(w.metabolism)}, pool ${formatSol(w.pool)})`);
+// ---- the end of the world: the rent comes back too ----------------------------
+// escheat is timer-gated (180 days; 4 s under short-timers), so the closing
+// path runs only on a short-timers artifact, like the listing-age case. After
+// it the World is gone; a new run of this script initialises it again.
+if (shortTimers) {
+  const recovery = w.recovery;
+  const notEscheated = (e: any) => e instanceof ProgramError && e.name === "NotEscheated";
+  await assert.rejects(chain.closeRecord(id), notEscheated);
+  await chain.beginWindDown();
+  await chain.sweepToRecovery();
+  await assert.rejects(chain.closeRecord(id), notEscheated);
+  await assert.rejects(chain.closeCredit(alice.publicKey), notEscheated);
+  await assert.rejects(chain.closeWorld(), notEscheated);
+  await new Promise(r => setTimeout(r, 5000));
+  before = await chain.world();
+  let recBefore = await chain.balance(recovery);
+  await chain.escheat();
+  w = await chain.world();
+  assert.ok(w.escheated); assert.equal(w.totalVaults, 0n); assert.equal(w.totalCredit, 0n); assert.equal(w.metabolism, 0n); assert.equal(w.pool, 0n);
+  assert.equal((await chain.balance(recovery)) - recBefore, before.lamports - rentWorld, "escheat pays exactly what was above rent");
+  ok("wind-down, sweep, escheat (short-timers: 4 s): escheated set, ledger zero; close_record / close_credit / close_world before it -> NotEscheated");
+
+  await assert.rejects(chain.closeWorld(), (e: any) => e instanceof ProgramError && e.name === "RecordsStillOpen");
+  const open = await chain.openRecords({ from: 0, to: w.nextId });
+  assert.equal(open.length, w.nextId, "every record is still readable");
+  c = (await chain.creature(donated))!;
+  assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(bob.publicKey), "a larva a keeper still holds closes like any other");
+  const keptAsset = c.asset;
+  const rentRecords = open.reduce((a, r) => a + r.lamports, 0n);
+  recBefore = await chain.balance(recovery);
+  for (let i = 0; i < open.length; i += CLOSE_BATCH) await chain.closeRecords(open.slice(i, i + CLOSE_BATCH).map(r => r.id));
+  assert.equal((await chain.balance(recovery)) - recBefore, rentRecords, "recovery gains exactly the closed records' rent");
+  assert.equal(await chain.creature(donated), null);
+  assert.equal((await chain.openRecords({ from: 0, to: w.nextId })).length, 0);
+  assert.ok((await chain.asset(keptAsset))?.owner.equals(bob.publicKey), "the kept larva's asset stays its owner's");
+  ok(`close_record x ${open.length} (${Math.ceil(open.length / CLOSE_BATCH)} tx): ${formatSol(rentRecords)} SOL of rent to recovery; the OWNED larva's NFT stays with its keeper`);
+
+  const credits = await chain.listCreditOwners();
+  assert.ok(credits.some(x => x.owner.equals(alice.publicKey)) && credits.some(x => x.owner.equals(bob.publicKey)), "both keepers' credit accounts are listed");
+  const rentCredits = credits.reduce((a, x) => a + x.lamports, 0n);
+  recBefore = await chain.balance(recovery);
+  await chain.closeCredits(credits.map(x => x.owner));
+  assert.equal((await chain.balance(recovery)) - recBefore, rentCredits, "recovery gains exactly the closed credits' rent");
+  assert.equal((await chain.listCreditOwners()).length, 0);
+  w = await chain.world();
+  assert.equal(w.closedRecords, w.nextId); assert.equal(w.creditsOpen, 0);
+  ok(`close_credit x ${credits.length}: ${formatSol(rentCredits)} SOL of rent to recovery; World counts ${w.closedRecords}/${w.nextId} closed, 0 credits open`);
+
+  recBefore = await chain.balance(recovery);
+  await chain.closeWorld();
+  assert.equal(await chain.worldExists(), false);
+  assert.equal((await chain.balance(recovery)) - recBefore, w.lamports, "recovery gains the World's whole balance");
+  assert.ok((await chain.connection.getAccountInfo(collection))?.owner.equals(MPL_CORE), "the collection account stays, a Core account with no authority left");
+  ok(`close_world: ${formatSol(w.lamports)} SOL to recovery; the World is gone, the collection stays`);
+}
+
+console.log(`verify passed: ${step} checks, ${shortTimers ? `the world closed and ${formatSol(await chain.balance(w.recovery))} SOL sits at recovery` : `world holds ${formatSol(w.lamports)} SOL (metabolism ${formatSol(w.metabolism)}, pool ${formatSol(w.pool)})`}`);

@@ -14,7 +14,7 @@ import {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction, ComputeBudgetProgram, SystemProgram,
   LAMPORTS_PER_SOL, TransactionExpiredBlockheightExceededError, SendTransactionError, type AccountInfo,
 } from "@solana/web3.js";
-import { AnchorProvider, BN, Program, Wallet, type Idl } from "@coral-xyz/anchor";
+import { AnchorProvider, BN, Program, Wallet, utils, type Idl } from "@coral-xyz/anchor";
 import { deserializeAssetV1 } from "@metaplex-foundation/mpl-core";
 import { publicKey as umiKey, lamports as umiLamports } from "@metaplex-foundation/umi";
 import type { Instar } from "./idl/instar.ts";
@@ -57,7 +57,13 @@ export const CU = {
   CORE: 200_000,
   REWARD_BASE: 25_000, REWARD_PER: 5_000,
   DEATH_BASE: 150_000, DEATH_PER: 5_000,
+  /// close_record 6.6k and close_credit 6.3k each, measured in batches on
+  /// the scratch validator; close_world 3.3k runs under IX
+  CLOSE_PER: 20_000,
 } as const;
+/// close_record / close_credit instructions per transaction: three accounts
+/// each, two of them shared, so twenty fit a legacy transaction with room.
+export const CLOSE_BATCH = 20;
 
 const SCALAR_SIZE: Record<string, number> = { bool: 1, u8: 1, i8: 1, u16: 2, i16: 2, u32: 4, i32: 4, u64: 8, i64: 8, pubkey: 32 };
 function idlTypeSize(t: any): number {
@@ -79,6 +85,9 @@ export type WorldView = {
   nextId: number; totalAlive: number; lastEpoch: number; lastEpochTick: number; lastStateHash: string;
   metabolism: bigint; pool: bigint; totalVaults: bigint; totalCredit: bigint;
   lastOperatorAction: number; windDown: boolean; windDownAt: number;
+  /// after escheat the records may be closed for their rent; the two counters
+  /// say how far that has gone (close_world needs every record and credit gone)
+  escheated: boolean; closedRecords: number; creditsOpen: number;
   lamports: bigint;
 };
 
@@ -194,6 +203,7 @@ export class Chain {
   readonly priorityFee: number;
   readonly worldLayout: WorldLayout;
   private readonly errorNames = new Map<number, string>();
+  private readonly accountDiscriminator = new Map<string, Buffer>();
   /// Records that can never change again. Every path that sets DEAD is final,
   /// so once observed dead a creature is not fetched twice.
   private readonly dead = new Map<number, CreatureView>();
@@ -210,6 +220,7 @@ export class Chain {
     const provider = new AnchorProvider(this.connection, new Wallet(opts.operator), { commitment: "confirmed" });
     this.program = new Program<Instar>({ ...idl, address: this.programId.toBase58() } as Instar, provider);
     for (const e of idl.errors ?? []) this.errorNames.set(e.code, e.name);
+    for (const a of idl.accounts ?? []) this.accountDiscriminator.set(a.name, Buffer.from(a.discriminator));
     this.worldPda = PublicKey.findProgramAddressSync([Buffer.from("world")], this.programId)[0];
     const world = (idl.types ?? []).find(t => t.name === "World");
     if (!world || world.type.kind !== "struct" || !world.type.fields) throw new Error("IDL has no World struct");
@@ -265,6 +276,7 @@ export class Chain {
       lastStateHash: hex(w.lastStateHash), metabolism: big(w.metabolism), pool: big(w.pool),
       totalVaults: big(w.totalVaults), totalCredit: big(w.totalCredit),
       lastOperatorAction: num(w.lastOperatorAction), windDown: w.windDown, windDownAt: num(w.windDownAt),
+      escheated: w.escheated, closedRecords: num(w.closedRecords), creditsOpen: num(w.creditsOpen),
       lamports: BigInt(lamports),
     };
   }
@@ -680,6 +692,97 @@ export class Chain {
     return this.send([ix], [payer], async () => { const w = await this.world(); return w.totalVaults === 0n && w.totalCredit === 0n && w.metabolism === 0n && w.pool === 0n; });
   }
 
+  // ---- after escheat: the rent -----------------------------------------------
+  // Nothing is owed to anyone once `escheated` is set, so the accounts
+  // themselves go: each close sends the account's lamports (its rent) to
+  // `recovery`. Permissionless; the payer only pays the fee. `landed` reads
+  // the account: gone means closed.
+
+  /// The Creature PDAs in [from, to) that still exist, with their lamports,
+  /// in pages of 100 (getMultipleAccounts' limit).
+  async openRecords(range: { from: number; to: number }): Promise<{ id: number; lamports: bigint }[]> {
+    const out: { id: number; lamports: bigint }[] = [];
+    for (let start = range.from; start < range.to; start += 100) {
+      const ids = Array.from({ length: Math.min(100, range.to - start) }, (_, i) => start + i);
+      const infos = await this.connection.getMultipleAccountsInfo(ids.map(id => this.creaturePda(id)));
+      infos.forEach((info, i) => { if (info) out.push({ id: ids[i], lamports: BigInt(info.lamports) }); });
+    }
+    return out;
+  }
+
+  /// Every Credit PDA that exists: its owner and its lamports. One
+  /// getProgramAccounts filtered on the Credit discriminator, sliced to the
+  /// owner field, so the answer costs 32 bytes per account.
+  async listCreditOwners(): Promise<{ owner: PublicKey; address: PublicKey; lamports: bigint }[]> {
+    const disc = this.accountDiscriminator.get("Credit");
+    if (!disc) throw new Error("IDL has no Credit account");
+    const found = await this.connection.getProgramAccounts(this.programId, {
+      commitment: "confirmed",
+      filters: [{ memcmp: { offset: 0, bytes: utils.bytes.bs58.encode(disc) } }],
+      dataSlice: { offset: 8, length: 32 },
+    });
+    return found.map(({ pubkey, account }) => ({ owner: new PublicKey(account.data), address: pubkey, lamports: BigInt(account.lamports) }));
+  }
+
+  /// Close up to CLOSE_BATCH Creature PDAs in one transaction; requires
+  /// `escheated` (NotEscheated). The dead cache forgets them: a closed record
+  /// reads as never born.
+  async closeRecords(ids: number[], payer: Keypair = this.op): Promise<string> {
+    if (!ids.length || ids.length > CLOSE_BATCH) throw new Error(`closeRecords: 1..${CLOSE_BATCH} ids per transaction`);
+    const { recovery } = await this.world();
+    const ixs = await Promise.all(ids.map(id => this.program.methods.closeRecord(bn(id))
+      .accountsPartial({ world: this.worldPda, creature: this.creaturePda(id), recovery }).instruction()));
+    const sig = await this.send(ixs, [payer], async () => (await this.openRecords({ from: ids[0], to: ids[ids.length - 1] + 1 })).every(r => !ids.includes(r.id)), CU.CLOSE_PER * ids.length);
+    for (const id of ids) this.dead.delete(id);
+    return sig;
+  }
+
+  async closeRecord(id: number, payer: Keypair = this.op): Promise<string> {
+    return this.closeRecords([id], payer);
+  }
+
+  /// Close up to CLOSE_BATCH Credit PDAs (by owner) in one transaction;
+  /// requires `escheated`.
+  async closeCredits(owners: PublicKey[], payer: Keypair = this.op): Promise<string> {
+    if (!owners.length || owners.length > CLOSE_BATCH) throw new Error(`closeCredits: 1..${CLOSE_BATCH} owners per transaction`);
+    const { recovery } = await this.world();
+    const credits = owners.map(o => this.creditPda(o));
+    const ixs = await Promise.all(credits.map(credit => this.program.methods.closeCredit()
+      .accountsPartial({ world: this.worldPda, credit, recovery }).instruction()));
+    return this.send(ixs, [payer], async () => (await this.connection.getMultipleAccountsInfo(credits)).every(i => i === null), CU.CLOSE_PER * owners.length);
+  }
+
+  async closeCredit(owner: PublicKey, payer: Keypair = this.op): Promise<string> {
+    return this.closeCredits([owner], payer);
+  }
+
+  /// The last instruction the program ever runs for this world: the World
+  /// PDA's rent to `recovery`. Requires `escheated`, every record closed
+  /// (`closed_records == next_id`) and no credit open (RecordsStillOpen).
+  async closeWorld(payer: Keypair = this.op): Promise<string> {
+    const { recovery } = await this.world();
+    const ix = await this.program.methods.closeWorld()
+      .accountsPartial({ world: this.worldPda, recovery }).instruction();
+    return this.send([ix], [payer], async () => !(await this.worldExists()));
+  }
+
+  /// Drain a keypair to `to`: everything but `keep` (0, or rent-exempt: the
+  /// runtime refuses a balance that is neither) and, unless `payer` pays it,
+  /// the fee of this transfer. A fee payer must still be rent-exempt once
+  /// its fee is taken and before anything runs, so a wallet holding less
+  /// than rent + fee cannot drain itself; it needs a `payer`. Nothing is
+  /// sent when nothing would arrive.
+  async sendAll(from: Keypair, to: PublicKey, keep = 0n, payer?: Keypair): Promise<{ signature: string | null; lamports: bigint }> {
+    const balance = await this.balance(from.publicKey);
+    const fee = payer ? 0n : this.fee(CU.TRANSFER);
+    const value = balance - keep - fee;
+    if (value <= 0n) return { signature: null, lamports: 0n };
+    if (!payer && balance - fee < await this.rentExempt(0)) throw new Error(`${from.publicKey.toBase58()} holds ${balance} lamports, under rent + fee: it cannot pay its own fee; drain it with another payer`);
+    const ix = SystemProgram.transfer({ fromPubkey: from.publicKey, toPubkey: to, lamports: value });
+    const signature = await this.send([ix], payer ? [payer, from] : [from], async () => (await this.balance(from.publicKey)) <= keep, CU.TRANSFER);
+    return { signature, lamports: value };
+  }
+
   /// Anyone, after CULL_TIMEOUT: the keeper's 85% to their credit, the asset
   /// burned. The keeper is the asset's owner at settlement, read here.
   async forceSettleCull(id: number, payer: Keypair = this.op): Promise<string> {
@@ -749,12 +852,13 @@ export class Chain {
         return this.send([ix], [keypair], async () => (await this.creature(id))?.salePrice === 0n);
       },
       /// A plain Core transfer, as any wallet would do it: no program
-      /// instruction, the owner signs and pays. A listing left behind is
-      /// void (buy_listed checks the lister still owns the asset).
-      transferAsset: async (id: number, to: PublicKey): Promise<string> => {
+      /// instruction, the owner signs and pays (or `payer` pays: the
+      /// custodial sweep, where the wallet may hold nothing). A listing left
+      /// behind is void (buy_listed checks the lister still owns the asset).
+      transferAsset: async (id: number, to: PublicKey, payer: Keypair = keypair): Promise<string> => {
         const c = await rec(id);
         const ix = coreTransfer(c.asset, await this.collection(), me, to);
-        return this.send([ix], [keypair], ownedBy(id, to), CU.CORE);
+        return this.send([ix], payer === keypair ? [keypair] : [payer, keypair], ownedBy(id, to), CU.CORE);
       },
       /// A plain Core burn, as any wallet would do it. The program is not
       /// told; the creature stays alive on the record until the world settles

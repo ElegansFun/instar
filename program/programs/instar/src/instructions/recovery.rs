@@ -6,7 +6,7 @@
 //!   creature vaults  -> the keeper reclaims their own, in wind-down
 //!   credits          -> already pull-only; the holder needs nobody
 //!   metabolism, pool -> swept to `recovery`, fixed before the first lamport
-//!
+//!   account rent     -> after escheat, every PDA closes to `recovery`
 //! The operator's heartbeat distinguishes a running world from an abandoned
 //! one: a world being looked after never opens these doors, and one that is
 //! not opens them for everybody at the same moment.
@@ -123,7 +123,8 @@ pub fn sweep_to_recovery(ctx: Context<ToRecovery>) -> Result<()> {
 /// goes to recovery rather than sitting here forever. This is the only way a
 /// keeper's own money leaves without them, which is why the timer is six
 /// months and why it is stated plainly in the UI. Afterwards the ledger is
-/// zero and any remaining claim fails as Insolvent.
+/// zero, any remaining claim fails as Insolvent, and the accounts themselves
+/// may be closed for their rent.
 pub fn escheat(ctx: Context<ToRecovery>) -> Result<()> {
     let world = &mut ctx.accounts.world;
     require!(world.wind_down, InstarError::NotWindingDown);
@@ -134,6 +135,73 @@ pub fn escheat(ctx: Context<ToRecovery>) -> Result<()> {
     world.pool = 0;
     world.total_vaults = 0;
     world.total_credit = 0;
+    world.escheated = true;
     pay_out(&world.to_account_info(), &ctx.accounts.recovery.to_account_info(), amount)?;
     assert_solvent(world)
+}
+
+#[derive(Accounts)]
+#[instruction(id: u64)]
+pub struct CloseRecord<'info> {
+    #[account(mut, seeds = [WORLD_SEED], bump = world.bump, has_one = recovery @ InstarError::WrongId)]
+    pub world: Account<'info, World>,
+    #[account(mut, close = recovery, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump = creature.bump)]
+    pub creature: Account<'info, Creature>,
+    /// CHECK: constrained to `world.recovery`; any account may receive lamports.
+    #[account(mut)]
+    pub recovery: UncheckedAccount<'info>,
+}
+
+/// Return a creature record's rent to recovery. Only after escheat, when the
+/// record backs no money; whatever its status. The Core asset is not touched:
+/// a kept larva's asset stays with its keeper as a collectible, a dead one's
+/// is already a burned stub.
+pub fn close_record(ctx: Context<CloseRecord>, _id: u64) -> Result<()> {
+    let world = &mut ctx.accounts.world;
+    require!(world.escheated, InstarError::NotEscheated);
+    world.closed_records = add(world.closed_records, 1)?;
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct CloseCredit<'info> {
+    #[account(mut, seeds = [WORLD_SEED], bump = world.bump, has_one = recovery @ InstarError::WrongId)]
+    pub world: Account<'info, World>,
+    /// Any holder's credit, passed by address; no signature, since after
+    /// escheat it is empty and the World no longer backs it.
+    #[account(mut, close = recovery, seeds = [CREDIT_SEED, credit.owner.as_ref()], bump = credit.bump)]
+    pub credit: Account<'info, Credit>,
+    /// CHECK: constrained to `world.recovery`; any account may receive lamports.
+    #[account(mut)]
+    pub recovery: UncheckedAccount<'info>,
+}
+
+/// Return a credit account's rent to recovery. Only after escheat.
+pub fn close_credit(ctx: Context<CloseCredit>) -> Result<()> {
+    let world = &mut ctx.accounts.world;
+    require!(world.escheated, InstarError::NotEscheated);
+    world.credits_open = sub(world.credits_open, 1)?;
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct CloseWorld<'info> {
+    #[account(mut, close = recovery, seeds = [WORLD_SEED], bump = world.bump, has_one = recovery @ InstarError::WrongId)]
+    pub world: Account<'info, World>,
+    /// CHECK: constrained to `world.recovery`; any account may receive lamports.
+    #[account(mut)]
+    pub recovery: UncheckedAccount<'info>,
+}
+
+/// The last instruction the world ever runs: once every record and credit is
+/// closed, the World PDA closes to recovery for its rent. The collection
+/// stays behind as a Core account whose update authority no longer exists.
+pub fn close_world(ctx: Context<CloseWorld>) -> Result<()> {
+    let world = &ctx.accounts.world;
+    require!(world.escheated, InstarError::NotEscheated);
+    require!(
+        world.closed_records == world.next_id && world.credits_open == 0,
+        InstarError::RecordsStillOpen
+    );
+    Ok(())
 }

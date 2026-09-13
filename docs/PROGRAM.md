@@ -28,6 +28,7 @@ each lamport can still be got out, by someone, without anyone's permission:
 | credit           | `withdraw` by its owner, at any time                                 |
 | metabolism, pool | `withdraw_treasury` by the operator; `sweep_to_recovery` by anyone in wind-down |
 | anything left    | `escheat` to `recovery`, 180 days after wind-down began              |
+| account rent     | `close_record`, `close_credit`, `close_world` to `recovery`, after escheat |
 
 Wind-down is declared by the operator, or by anyone once the operator has been
 silent for 90 days. Every operator instruction refreshes the heartbeat, so a
@@ -71,9 +72,13 @@ totals against the sum of every creature and credit account after each flow.
 | total_credit          | u64      | sum of every credit                                         |
 | last_operator_action  | i64      | unix time of the last operator instruction                  |
 | wind_down, wind_down_at | bool, i64 | one-way                                                  |
+| escheated             | bool     | set by `escheat`; opens the close instructions              |
+| closed_records        | u64      | Creature PDAs closed by `close_record`                      |
+| credits_open          | u64      | Credit PDAs in existence                                    |
 | bump                  | u8       |                                                             |
 
-`Creature`, seeds `["creature", id as u64 LE]`, never closed:
+`Creature`, seeds `["creature", id as u64 LE]`, closed only by `close_record`
+after escheat:
 
 | field             | type     |                                                        |
 | ----------------- | -------- | ------------------------------------------------------ |
@@ -100,7 +105,8 @@ replayed engine compares the last 8 bytes of the account field to that value.
 
 `Credit`, seeds `["credit", owner]`: `owner`, `amount`, `bump`. Created with
 `init_if_needed` by whichever instruction first owes the owner something; the
-transaction's signer pays its rent. Never closed.
+transaction's signer pays its rent and the world counts it in `credits_open`.
+Closed only by `close_credit` after escheat.
 
 ## The larva as an NFT
 
@@ -216,6 +222,9 @@ is the asset's current owner; instructions that touch the asset also take
 | `reclaim_vault(id)` | keeper | wind-down: vault to credit, asset burned, larva DEAD |
 | `sweep_to_recovery()` | anyone | wind-down: metabolism + pool to `recovery` |
 | `escheat()` | anyone | wind-down + ESCHEAT_AFTER: everything above rent to `recovery`; ledger zeroed, later claims fail Insolvent |
+| `close_record(id)` | anyone | escheated: closes the Creature PDA to `recovery`, any status; the asset is untouched; `closed_records += 1` |
+| `close_credit()` | anyone | escheated: closes the `credit` account passed (any owner's) to `recovery`; `credits_open -= 1` |
+| `close_world()` | anyone | escheated, `closed_records == next_id`, `credits_open == 0`: closes the World PDA to `recovery` |
 
 Splits are integer basis points; the last share of each split takes the
 rounding remainder so the parts always sum to the whole.
@@ -227,7 +236,32 @@ emptied, and fresh lamports would only back stale claims.
 Errors: `NotOperator`, `NotOwner`, `WrongStatus`, `WrongId`, `NotForSale`,
 `WrongPrice`, `Insolvent`, `NotWindingDown`, `NotAbandoned`, `TooEarly`,
 `EpochNotMonotonic`, `NothingToWithdraw`, `WindingDown`, `RecoveryIsOperator`,
-`AssetMismatch`, `WrongCollection`.
+`AssetMismatch`, `WrongCollection`, `NotEscheated`, `RecordsStillOpen`.
+
+## The end of the world
+
+`escheat` empties the ledger; what is left on chain afterwards is rent: one
+`Creature` per larva ever born, one `Credit` per address ever owed
+something, and the `World` itself. Three permissionless instructions return
+it, all to `recovery` and all only once `world.escheated` is set (before
+that the records back money and closing one is refused with `NotEscheated`):
+
+1. `close_record(id)` for every id below `next_id`, in any order and any
+   status. The Core asset is not touched: a kept larva's asset stays with
+   its keeper as a collectible, a dead one's is already a burned stub.
+   `closed_records` counts them.
+2. `close_credit()` for every `Credit` account (found by program-account
+   scan on the Credit discriminator; `credits_open` says how many exist).
+   No signature: after escheat a credit is empty and backs nothing.
+3. `close_world()`, refused with `RecordsStillOpen` until
+   `closed_records == next_id` and `credits_open == 0`. The collection is a
+   Core account owned by Core, not by this program; it stays, with the
+   World PDA, which no longer exists, as its update authority.
+
+Each step is irreversible and each returns exactly the closed account's
+lamports; `escheat` is idempotent and a second call pays out nothing. The
+program's own deploy rent is not the program's to return: `solana program
+close` by the upgrade authority does that (docs/RECOVERY.md).
 
 ## Timers
 
@@ -292,7 +326,11 @@ to wind down a running world, self-service culls after the timeout, the
 heartbeat keeping a world alive, a keeper recovering (and burning) their
 larva with the operator gone forever, treasuries reaching only the recovery
 address, the world emptying to exactly the one vault nobody reclaimed, that
-vault escheating after the timer, and every record staying readable.
+vault escheating after the timer, every record staying readable, and then
+the end of the world: nothing closes before escheat, every record (the
+unclaimed keeper's included, whose asset stays theirs) and every credit
+closes to recovery for exactly its rent, `close_world` refuses while any
+is open and then returns the World's rent, leaving the collection behind.
 Solvency is asserted after every flow. Assets are read with
 `@metaplex-foundation/mpl-core` over umi; the native transfer and burn are
 the SDK's `transferV1` and `burnV1`.

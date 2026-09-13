@@ -1,7 +1,7 @@
 // The operator's hand on the world: every program instruction the world
 // process does not send on its own. Run from Windows:
 //
-//   npx tsx scripts/operator.mts <command> [args] [--yes] [--allow-fresh]
+//   npx tsx scripts/operator.mts <command> [args] [--yes] [--allow-fresh] [--to <addr>] [--nfts]
 //
 //   status                                   the World, balances, heartbeat age, and the
 //                                            live process's /api/health if it answers
@@ -20,6 +20,13 @@
 //                                            ABANDONED_AFTER
 //   sweep-to-recovery                        wind-down: treasuries to recovery
 //   escheat                                  wind-down + ESCHEAT_AFTER: everything to recovery
+//   recover-all --to <recovery>              the whole end of the world, resumable: wind-down,
+//                                            sweep, escheat, close every record and credit,
+//                                            close the World, drain the fee and operator keys,
+//                                            print the program-close command. Does what the
+//                                            chain allows NOW and dates the rest
+//   sweep-custodial --to <recovery> [--nfts] after escheat only: every custodial wallet's SOL
+//                                            (and with --nfts its larvae) to recovery
 //   rotate-master-key <master.key>           re-seal DATA_DIR/accounts.json under the key in
 //                                            that file (npm run keys:new); world stopped
 //
@@ -28,19 +35,19 @@
 // prints every field that changed. Env: INSTAR_CLUSTER (default localnet),
 // INSTAR_RPC, INSTAR_PROGRAM_ID, INSTAR_OPERATOR_KEYPAIR (default
 // .keys/operator.json), INSTAR_URL (the world process, default
-// http://localhost:8787, for status), DATA_DIR and INSTAR_MASTER_KEY and PORT
-// (for rotate-master-key, as the world reads them).
+// http://localhost:8787, for status), INSTAR_FEE_KEYPAIR and INSTAR_COIN_MINT
+// (recover-all's last fee claim and drain), DATA_DIR and INSTAR_MASTER_KEY
+// and PORT (for rotate-master-key and sweep-custodial, as the world reads them).
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import { Chain, PUBLIC_RPC, STATUS, STATUS_NAME, formatSol, loadKeypair, type Cluster, type WorldView } from "../services/chain/solana.mts";
-import { deriveMasterKey, resealAccounts } from "../services/world/accounts.mts";
+import { CLOSE_BATCH, CU, Chain, PUBLIC_RPC, SIGNATURE_FEE, STATUS, STATUS_NAME, formatSol, loadKeypair, type Cluster, type WorldView } from "../services/chain/solana.mts";
+import { FeeClaimer } from "../services/chain/fees.mts";
+import { custodialKeypairs, deriveMasterKey, resealAccounts } from "../services/world/accounts.mts";
 import { lockHolder } from "../services/world/journal.mts";
 
-const ABANDONED_AFTER_S = 90 * 86_400;
-const ESCHEAT_AFTER_S = 180 * 86_400;
 /// /api/health awaits its own RPC probe for up to 5 s before answering
 const HEALTH_TIMEOUT_MS = 8000;
 /// what each cluster's RPC answers to getGenesisHash; localnet is whatever was started
@@ -51,19 +58,34 @@ const GENESIS: Partial<Record<Cluster, string>> = {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
-const FLAGS = ["--yes", "--allow-fresh"];
-const unknownFlags = argv.filter(a => a.startsWith("--") && !FLAGS.includes(a));
-const yes = argv.includes("--yes");
-const allowFresh = argv.includes("--allow-fresh");
-const [command, ...args] = argv.filter(a => !a.startsWith("--"));
+const FLAGS = ["--yes", "--allow-fresh", "--nfts"];
+const VALUE_FLAGS = ["--to"];
+const values = new Map<string, string>();
+const words: string[] = [];
+for (let i = 0; i < argv.length; i++) {
+  if (VALUE_FLAGS.includes(argv[i])) values.set(argv[i], argv[++i] ?? ""); else words.push(argv[i]);
+}
+const unknownFlags = words.filter(a => a.startsWith("--") && !FLAGS.includes(a));
+const yes = words.includes("--yes");
+const allowFresh = words.includes("--allow-fresh");
+const nfts = words.includes("--nfts");
+const [command, ...args] = words.filter(a => !a.startsWith("--"));
 const cluster = (process.env.INSTAR_CLUSTER ?? "localnet") as Cluster;
 if (!(cluster in PUBLIC_RPC)) throw new Error(`INSTAR_CLUSTER must be one of ${Object.keys(PUBLIC_RPC).join(", ")}`);
 const operatorPath = path.resolve(root, process.env.INSTAR_OPERATOR_KEYPAIR ?? ".keys/operator.json");
 const worldUrl = (process.env.INSTAR_URL ?? "http://localhost:8787").replace(/\/$/, "");
+/// The program's timers are compile-time. A localnet validator preloads the
+/// artifact on disk, whose marker says which build it is; elsewhere they are
+/// the deployed values.
+const FEATURES = path.join(root, "program", "target", "deploy", "instar.features");
+const shortTimers = cluster === "localnet" && fs.existsSync(FEATURES) && fs.readFileSync(FEATURES, "utf8").trim() === "short-timers";
+const ABANDONED_AFTER_S = shortTimers ? 4 : 90 * 86_400;
+const ESCHEAT_AFTER_S = shortTimers ? 4 : 180 * 86_400;
+const DAYS = (s: number) => s >= 86_400 ? `${s / 86_400} days` : `${s} s`;
 
 const usage = () => {
   const src = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
-  console.log(src.split("\n").slice(3, 27).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
+  console.log(src.split("\n").slice(3, 31).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
 };
 
 const age = (s: number) => {
@@ -97,6 +119,7 @@ function worldRows(w: WorldView): [string, string][] {
     ["vaults (total)", sol(w.totalVaults)], ["credit (total)", sol(w.totalCredit)],
     ["last operator action", when(w.lastOperatorAction)],
     ["wind-down", w.windDown ? `since ${when(w.windDownAt)}` : "no"],
+    ["escheated", w.escheated ? `yes; ${w.closedRecords} of ${w.nextId} records closed, ${w.creditsOpen} credit(s) open` : "no"],
     ["lamports", sol(w.lamports)],
   ];
 }
@@ -109,6 +132,14 @@ function printDiff(before: WorldView, after: WorldView) {
   for (const [k, from, to] of changed) console.log(`  ${k.padEnd(22)} ${from}  ->  ${to}`);
 }
 
+/// "on localnet (https://mainnet...)" must never be a line that sends.
+async function assertEndpoint(chain: Chain) {
+  const expect = GENESIS[cluster];
+  if (!expect) return;
+  const genesis = await chain.connection.getGenesisHash();
+  if (genesis !== expect) throw new Error(`INSTAR_RPC ${chain.rpcUrl} is not a ${cluster} endpoint (genesis ${genesis}, expected ${expect}) — nothing sent`);
+}
+
 /// Say what is about to happen; send only with --yes.
 async function act(chain: Chain, plan: string[], send: () => Promise<string>) {
   console.log(`about to send on ${cluster} (${chain.rpcUrl}):`);
@@ -116,12 +147,7 @@ async function act(chain: Chain, plan: string[], send: () => Promise<string>) {
   // exitCode rather than exit(): on Windows, exit() under an RPC socket
   // still closing trips a libuv assertion
   if (!yes) { console.log("\nnothing sent — add --yes to send it"); process.exitCode = 2; return; }
-  // "on localnet (https://mainnet...)" must never be a line that sends
-  const expect = GENESIS[cluster];
-  if (expect) {
-    const genesis = await chain.connection.getGenesisHash();
-    if (genesis !== expect) throw new Error(`INSTAR_RPC ${chain.rpcUrl} is not a ${cluster} endpoint (genesis ${genesis}, expected ${expect}) — nothing sent`);
-  }
+  await assertEndpoint(chain);
   const before = await chain.world();
   const sig = await send();
   console.log(`sent: ${sig}\n      ${chain.explorerTx(sig)}`);
@@ -204,23 +230,284 @@ async function rotateMasterKey(source: string | undefined) {
     newHex = source;
   } else throw new Error(`rotate-master-key: ${source ? `no such file ${source}` : "give the path of the new master.key"} (npm run keys:new -- <dir> makes one)`);
   if (!/^[0-9a-f]{64}$/i.test(newHex)) throw new Error(`rotate-master-key: ${source} does not hold 32 bytes as 64 hex characters`);
-  const dataDir = path.resolve(root, process.env.DATA_DIR ?? "data/world");
   const port = Number(process.env.PORT ?? 8787);
-  const held = lockHolder(dataDir);
-  if (held?.alive) throw new Error(`${dataDir}/world.lock is held by pid ${held.pid}, alive since ${new Date(held.startedAt).toISOString()} — stop the world process first (it would write the old sealing back)`);
+  const held = lockHolder(dataDir());
+  if (held?.alive) throw new Error(`${dataDir()}/world.lock is held by pid ${held.pid}, alive since ${new Date(held.startedAt).toISOString()} — stop the world process first (it would write the old sealing back)`);
   if (await portOpen(port)) throw new Error(`something answers on :${port} — stop the world process first (it would write the old sealing back)`);
-  const file = path.join(dataDir, "accounts.json");
+  const file = accountsFile();
   if (!fs.existsSync(file)) throw new Error(`no ${file}`);
-  const current = process.env.INSTAR_MASTER_KEY ? Buffer.from(process.env.INSTAR_MASTER_KEY, "hex") : deriveMasterKey(loadKeypair(operatorPath).secretKey);
-  if (current.length !== 32) throw new Error("INSTAR_MASTER_KEY must be 64 hex characters");
+  const current = masterKey();
   const next = Buffer.from(newHex, "hex");
   if (current.equals(next)) throw new Error("that is the current key");
   console.log(`about to re-seal every custodial key in ${file}`);
   console.log(`  from ${process.env.INSTAR_MASTER_KEY ? "INSTAR_MASTER_KEY" : `the key derived from ${operatorPath}`} to the key in ${source}`);
   console.log(`  accounts.json.bak is rewritten under the new key too; the world must then start with INSTAR_MASTER_KEY=<new>`);
   if (!yes) { console.log("\nnothing written — add --yes to do it"); process.exitCode = 2; return; }
-  const n = resealAccounts(dataDir, current, next);
+  const n = resealAccounts(dataDir(), current, next);
   console.log(`re-sealed ${n} account(s); start the world with INSTAR_MASTER_KEY set to the new key`);
+}
+
+/// The custody key as the world reads it: INSTAR_MASTER_KEY, or on
+/// localnet/devnet the one derived from the operator keypair.
+function masterKey(): Buffer {
+  const key = process.env.INSTAR_MASTER_KEY ? Buffer.from(process.env.INSTAR_MASTER_KEY, "hex") : deriveMasterKey(loadKeypair(operatorPath).secretKey);
+  if (key.length !== 32) throw new Error("INSTAR_MASTER_KEY must be 64 hex characters");
+  return key;
+}
+const dataDir = () => path.resolve(root, process.env.DATA_DIR ?? "data/world");
+const accountsFile = () => path.join(dataDir(), "accounts.json");
+
+type Holding = { user: string; keypair: Keypair | null; balance: bigint };
+
+/// Every custodial wallet in DATA_DIR/accounts.json and the SOL it holds. A
+/// record this master key cannot open has no keypair and no balance.
+async function custodialHoldings(chain: Chain): Promise<Holding[]> {
+  const list = custodialKeypairs(dataDir(), masterKey());
+  const out: Holding[] = list.map(a => ({ ...a, balance: 0n }));
+  const readable = out.filter(a => a.keypair);
+  for (let i = 0; i < readable.length; i += 100) {
+    const page = readable.slice(i, i + 100);
+    const infos = await chain.connection.getMultipleAccountsInfo(page.map(a => a.keypair!.publicKey));
+    page.forEach((a, j) => { a.balance = BigInt(infos[j]?.lamports ?? 0); });
+  }
+  return out;
+}
+
+/// The program-data account (an UpgradeableLoaderState::ProgramData: u32
+/// tag, u64 slot, Option<Pubkey> upgrade authority, then the code). It holds
+/// the program's rent and is what `solana program close` removes; the
+/// program account itself stays behind, so its absence is what "closed" means.
+async function programData(chain: Chain): Promise<{ lamports: bigint; authority: PublicKey | null } | null> {
+  const info = await chain.connection.getAccountInfo(chain.programDataPda());
+  if (!info) return null;
+  const authority = info.data.length >= 45 && info.data[12] !== 0 ? new PublicKey(info.data.subarray(13, 45)) : null;
+  return { lamports: BigInt(info.lamports), authority };
+}
+
+/// C:/x/y -> /mnt/c/x/y, for the WSL command recover-all prints.
+const wslPath = (p: string) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, d: string) => `/mnt/${d.toLowerCase()}`);
+
+/// The end of the world as one command, run as often as it takes. Every step
+/// reads the chain and is done, possible now (sent with --yes), or waiting on
+/// the step before it; a run stops printing "now" at the first step it does
+/// not send, and dates the rest. What reaches `to` is counted per step and
+/// in total. docs/RECOVERY.md is the narrative.
+async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
+  const me = operator.publicKey;
+  if (to.equals(me)) throw new Error("--to is the operator key; recovery is where the money goes when that key is gone");
+  await requireLivedIn(chain, to, "--to");
+  const feePath = path.resolve(root, process.env.INSTAR_FEE_KEYPAIR ?? ".keys/fee.json");
+  const fee = fs.existsSync(feePath) ? loadKeypair(feePath) : null;
+  if (fee?.publicKey.equals(to)) throw new Error("--to is the fee keypair; it is drained here, not filled");
+  const deployerPath = path.resolve(root, process.env.INSTAR_DEPLOYER_KEYPAIR ?? operatorPath);
+  const now = () => Math.floor(Date.now() / 1000);
+  const line = (n: string, title: string, text: string) => console.log(`${n.padStart(3)}  ${title.padEnd(18)} ${text}`);
+  const note = (text: string) => console.log(`${"".padEnd(24)}${text}`);
+  let recovered = 0n;
+  /// Once a step is not sent (dry run, or the chain says not yet), the
+  /// steps after it are described, not attempted.
+  let pending = false;
+  const run = async (n: string, title: string, what: string, send: () => Promise<void>): Promise<boolean> => {
+    line(n, title, `now: ${what}`);
+    if (!yes) { pending = true; return false; }
+    const before = await chain.balance(to);
+    await send();
+    const got = (await chain.balance(to)) - before;
+    recovered += got;
+    note(`+${sol(got)} to recovery`);
+    return true;
+  };
+  const done = async () => {
+    console.log(`\n${yes ? "recovered this run" : "nothing sent (add --yes)"}: ${sol(recovered)}; recovery holds ${formatSol(await chain.balance(to))} SOL`);
+    if (!yes) process.exitCode = 2;
+  };
+
+  console.log(`recover-all on ${cluster} (${chain.rpcUrl}) -> ${to.toBase58()}`);
+  console.log(`timers: abandonment ${DAYS(ABANDONED_AFTER_S)}, escheat ${DAYS(ESCHEAT_AFTER_S)} after wind-down${shortTimers ? " (short-timers artifact on disk)" : ""}\n`);
+  if (yes) await assertEndpoint(chain);
+
+  if (await chain.worldExists()) {
+    let w = await chain.world();
+    if (!w.recovery.equals(to)) throw new Error(`--to ${to.toBase58()} is not the World's recovery address ${w.recovery.toBase58()}; the program pays only that one, so pass it and every step lands in one place`);
+    const rentWorld = await chain.rentExempt((await chain.connection.getAccountInfo(chain.worldPda))!.data.length);
+
+    // 1
+    if (w.windDown) line("1", "begin_wind_down", `done ${when(w.windDownAt)}`);
+    else {
+      const silence = now() - w.lastOperatorAction;
+      const asOperator = w.operator.equals(me);
+      if (!asOperator && silence <= ABANDONED_AFTER_S) {
+        line("1", "begin_wind_down", `BLOCKED: ${me.toBase58()} is not the operator and the world is not abandoned (heartbeat ${age(silence)} ago; anyone may from ${when(w.lastOperatorAction + ABANDONED_AFTER_S)})`);
+        return done();
+      }
+      await run("1", "begin_wind_down", `ONE-WAY, as ${asOperator ? "the operator" : "a stranger, the world being abandoned"}; no birth, sale, reward or funding lands after it`, async () => { await chain.beginWindDown(operator); });
+      if (!pending) w = await chain.world();
+    }
+
+    // 2
+    if (pending) line("2", "sweep_to_recovery", `then: metabolism ${formatSol(w.metabolism)} + pool ${formatSol(w.pool)} SOL`);
+    else if (w.metabolism + w.pool === 0n) line("2", "sweep_to_recovery", w.escheated ? "done (escheat took the treasuries)" : "done: treasuries empty");
+    else {
+      await run("2", "sweep_to_recovery", `metabolism ${formatSol(w.metabolism)} + pool ${formatSol(w.pool)} SOL; vaults and credits untouched`, async () => { await chain.sweepToRecovery(operator); });
+      if (!pending) w = await chain.world();
+    }
+
+    // 3
+    if (w.escheated) line("3", "escheat", `done: ledger zero, ${sol(w.lamports - rentWorld)} above rent left behind`);
+    else {
+      const opens = w.windDown ? w.windDownAt + ESCHEAT_AFTER_S : 0;
+      const owed = `vaults ${formatSol(w.totalVaults)} + credit ${formatSol(w.totalCredit)} SOL unclaimed`;
+      if (pending) line("3", "escheat", `${DAYS(ESCHEAT_AFTER_S)} after wind-down: everything above rent (${owed}); keepers reclaim_vault and withdraw until then`);
+      else if (now() <= opens) { line("3", "escheat", `opens ${when(opens)} (in ${age(opens - now())}): everything above rent (${owed}); keepers reclaim_vault and withdraw until then`); pending = true; }
+      else {
+        await run("3", "escheat", `${sol(w.lamports - rentWorld)} above rent (${owed}); keepers who did not reclaim lose their claims`, async () => { await chain.escheat(operator); });
+        if (!pending) w = await chain.world();
+      }
+    }
+
+    // 4: the rent
+    if (pending) {
+      line("4", "close records", `after escheat: ${w.nextId - w.closedRecords} Creature record(s), every Credit, then the World (${formatSol(rentWorld)} SOL of rent); sweep-custodial first`);
+      line("5", "drain keys", "after close_world: the fee keypair (after a last claim) and the operator to recovery");
+      line("6", "program close", "after close_world: solana program close, printed here");
+      return done();
+    }
+    const open = await chain.openRecords({ from: 0, to: w.nextId });
+    const credits = await chain.listCreditOwners();
+    // custodial wallets: their SOL is swept by sweep-custodial, which needs
+    // the World's `escheated` flag, so the World cannot close over them; and
+    // their larvae are only findable through the records, so say so now
+    if (fs.existsSync(accountsFile())) {
+      const held = await custodialHoldings(chain);
+      const unreadable = held.filter(h => !h.keypair).length;
+      const total = held.reduce((a, h) => a + h.balance, 0n);
+      const wallets = new Set(held.filter(h => h.keypair).map(h => h.keypair!.publicKey.toBase58()));
+      const kept = open.length ? (await chain.creatures({ from: 0, to: w.nextId })).filter(c => c.status !== STATUS.DEAD && wallets.has(c.keeper.toBase58())) : [];
+      if (total > 0n || unreadable) {
+        line("4", "close records", `REFUSED: ${accountsFile()} holds ${held.length} custodial wallet(s) with ${sol(total)}${unreadable ? ` and ${unreadable} this master key cannot open` : ""}`);
+        note(`run sweep-custodial --to ${to.toBase58()}${kept.length ? ` --nfts (${kept.length} larva(e) are kept there)` : ""} first: it needs the World's escheated flag, and the World closes here`);
+        return done();
+      }
+      note(`custodial wallets in ${accountsFile()}: ${held.length}, all empty${kept.length ? `; ${kept.length} larva(e) kept there stay collectibles unless sweep-custodial --nfts moves them before the records close` : ""}`);
+    } else note(`no ${accountsFile()}: if this world had custodial wallets, sweep-custodial needs the World and must run before this`);
+
+    if (!open.length) line("4", "close_record", `done: ${w.closedRecords} of ${w.nextId}`);
+    else {
+      const rent = open.reduce((a, r) => a + r.lamports, 0n);
+      await run("4", "close_record", `${open.length} of ${w.nextId} open, ${sol(rent)} of rent, ${Math.ceil(open.length / CLOSE_BATCH)} transaction(s) of ${CLOSE_BATCH}`, async () => {
+        for (let i = 0; i < open.length; i += CLOSE_BATCH) {
+          const ids = open.slice(i, i + CLOSE_BATCH).map(r => r.id);
+          note(`${ids[0]}..${ids[ids.length - 1]} (${ids.length}): ${await chain.closeRecords(ids, operator)}`);
+        }
+      });
+    }
+    if (!credits.length) line("", "close_credit", "done: no credit open");
+    else if (!pending) {
+      const rent = credits.reduce((a, c) => a + c.lamports, 0n);
+      await run("", "close_credit", `${credits.length} open, ${sol(rent)} of rent`, async () => {
+        for (let i = 0; i < credits.length; i += CLOSE_BATCH) {
+          const page = credits.slice(i, i + CLOSE_BATCH);
+          note(`${page.map(c => c.owner.toBase58().slice(0, 8)).join(" ")}: ${await chain.closeCredits(page.map(c => c.owner), operator)}`);
+        }
+      });
+    }
+    if (pending) {
+      line("", "close_world", `then: the World's rent, ${sol(rentWorld)}${w.lamports > rentWorld ? ` plus ${sol(w.lamports - rentWorld)} that arrived after escheat` : ""}`);
+      line("5", "drain keys", "after close_world");
+      line("6", "program close", "after close_world");
+      return done();
+    }
+    w = await chain.world();
+    if (w.closedRecords !== w.nextId || w.creditsOpen !== 0) throw new Error(`the World counts ${w.closedRecords} of ${w.nextId} records closed and ${w.creditsOpen} credit(s) open after closing everything found; the program would refuse close_world (RecordsStillOpen) — run again`);
+    await run("", "close_world", `the World's ${sol(w.lamports)}${w.lamports > rentWorld ? ` (rent plus ${sol(w.lamports - rentWorld)} that arrived after escheat)` : ", its rent"}; the collection account stays, ownerless`, async () => { note(`sent ${await chain.closeWorld(operator)}`); });
+  } else {
+    line("1-4", "world", "closed: wind-down, sweep, escheat, every record and credit, and the World itself are done");
+  }
+
+  // 5: the keys
+  if (fee) {
+    const mint = process.env.INSTAR_COIN_MINT;
+    const balance = await chain.balance(fee.publicKey);
+    if (balance === 0n && !mint) line("5", "drain fee keypair", `done: ${fee.publicKey.toBase58()} is empty`);
+    else await run("5", "drain fee keypair", `${fee.publicKey.toBase58()} holds ${formatSol(balance)} SOL${mint ? "; a last claim of the coin's creator fees first" : ""}; to zero, the operator paying the fee`, async () => {
+      if (mint) {
+        const claimer = new FeeClaimer({ chain, mint: pubkey(mint, "INSTAR_COIN_MINT"), fee, log: l => note(l) });
+        const results = await claimer.claim();
+        if (!results.length) note("nothing to claim");
+      }
+      // the world's sweep leaves this key at exactly rent, which cannot pay
+      // its own fee out; the operator pays and the key ends at zero
+      const r = await chain.sendAll(fee, to, 0n, operator);
+      note(r.signature ? `sent ${sol(r.lamports)}: ${r.signature}` : "already empty");
+    });
+  } else line("5", "drain fee keypair", `no fee keypair at ${feePath} (INSTAR_FEE_KEYPAIR)`);
+  const program = await programData(chain);
+  const authority = program?.authority ?? null;
+  const closesProgram = !!authority && authority.equals(me);
+  // a fee payer must stay rent-exempt once its fee is taken, so the key that
+  // signs the program close keeps the rent floor plus that fee (one
+  // signature, no priority fee: the CLI's default) plus the fee of the drain
+  // that follows the close, which then takes it to zero
+  const keep = closesProgram ? (await chain.rentExempt(0)) + SIGNATURE_FEE + chain.fee(CU.TRANSFER) : 0n;
+  const mine = await chain.balance(me);
+  if (mine <= keep) line("", "drain operator", `done: ${me.toBase58()} holds ${formatSol(mine)} SOL${keep ? ", the floor it keeps to sign the program close" : ""}`);
+  else await run("", "drain operator", `${me.toBase58()} holds ${formatSol(mine)} SOL; ${keep ? `keeps ${sol(keep)}: the rent floor plus the fees of the program close it signs next and of the drain after it` : "to zero"}`, async () => {
+    const r = await chain.sendAll(operator, to, keep);
+    note(r.signature ? `sent ${sol(r.lamports)}: ${r.signature}` : "nothing above the fee to send");
+  });
+
+  // 6: the program
+  if (!program) line("6", "program close", "done: the program is closed");
+  else {
+    line("6", "program close", `${sol(program.lamports)} of program rent; upgrade authority ${authority?.toBase58() ?? "none (immutable: this rent is gone for good)"}`);
+    if (authority) {
+      note("run from Windows, signed by that key:");
+      note(`wsl -d Ubuntu-24.04 -u root -- bash ${wslPath(path.join(root, "scripts", "wsl-close-program.sh"))} ${cluster} ${to.toBase58()} ${chain.rpcUrl} ${wslPath(deployerPath)}`);
+      note("FINAL: the program id can never be deployed to again. Then run recover-all once more for the operator's last lamports.");
+    }
+  }
+  return done();
+}
+
+/// After escheat: every custodial wallet's SOL (and, with --nfts, its
+/// larvae) to the recovery address, the operator paying every fee so each
+/// wallet ends at exactly zero. The same 180-day rule the program applies to
+/// vaults and credits, and disclosed the same way (site, ECONOMY.md).
+async function sweepCustodial(chain: Chain, operator: Keypair, w: WorldView, to: PublicKey) {
+  if (!w.escheated) {
+    const opens = w.windDown ? w.windDownAt + ESCHEAT_AFTER_S : 0;
+    throw new Error(`the chain does not say escheated: ${w.windDown ? `escheat opens ${when(opens)}; run it first` : "the world is not winding down"}. Until escheat what is in a custodial wallet is its keeper's`);
+  }
+  if (!to.equals(w.recovery)) throw new Error(`--to ${to.toBase58()} is not the World's recovery address ${w.recovery.toBase58()}, where the program sent the unclaimed funds; custodial balances go the same way`);
+  if (!fs.existsSync(accountsFile())) throw new Error(`no ${accountsFile()} (DATA_DIR)`);
+  const held = await custodialHoldings(chain);
+  const wallets = new Map(held.filter(h => h.keypair).map(h => [h.keypair!.publicKey.toBase58(), h]));
+  const kept = nfts ? (await chain.creatures({ from: 0, to: w.nextId })).filter(c => c.status !== STATUS.DEAD && wallets.has(c.keeper.toBase58())) : [];
+  const larvaeOf = (h: Holding) => kept.filter(c => h.keypair && c.keeper.equals(h.keypair.publicKey));
+  console.log(`sweep-custodial on ${cluster} (${chain.rpcUrl}): ${held.length} wallet(s) in ${accountsFile()} -> ${to.toBase58()}`);
+  console.log(`fees paid by ${operator.publicKey.toBase58()} (${formatSol(await chain.balance(operator.publicKey))} SOL)\n`);
+  let total = 0n;
+  for (const h of held) {
+    const who = h.user.padEnd(26);
+    if (!h.keypair) { console.log(`  ${who} cannot be opened under this master key — skipped`); continue; }
+    const mine = larvaeOf(h);
+    console.log(`  ${who} ${h.keypair.publicKey.toBase58()}  ${formatSol(h.balance)} SOL${mine.length ? `  larvae ${mine.map(c => c.id).join(", ")}` : ""}`);
+    total += h.balance;
+  }
+  console.log(`\n  total ${sol(total)}${nfts ? `, ${kept.length} larva(e)` : " (larvae stay where they are; --nfts moves them too)"}`);
+  if (!yes) { console.log("\nnothing sent — add --yes to send it"); process.exitCode = 2; return; }
+  await assertEndpoint(chain);
+  const before = await chain.balance(to);
+  for (const h of held) {
+    if (!h.keypair) continue;
+    const keeper = chain.asKeeper(h.keypair);
+    for (const c of larvaeOf(h)) console.log(`  ${h.user}: larva ${c.id} -> recovery: ${await keeper.transferAsset(c.id, to, operator)}`);
+    if (h.balance > 0n) {
+      const r = await chain.sendAll(h.keypair, to, 0n, operator);
+      console.log(`  ${h.user}: ${sol(r.lamports)} -> recovery: ${r.signature ?? "already empty"}`);
+    }
+  }
+  console.log(`\nrecovered: ${sol((await chain.balance(to)) - before)}; recovery holds ${formatSol(await chain.balance(to))} SOL`);
 }
 
 async function main() {
@@ -231,6 +518,12 @@ async function main() {
   const operator = loadKeypair(command === "accept-operator" && args[0] ? path.resolve(root, args[0]) : operatorPath);
   const chain = new Chain({ cluster, rpc: process.env.INSTAR_RPC, programId: process.env.INSTAR_PROGRAM_ID, operator });
   if (command === "status") return status(chain, operator);
+  const toArg = () => {
+    const v = values.get("--to");
+    if (!v) throw new Error(`${command} needs --to <the recovery address>`);
+    return pubkey(v, "--to");
+  };
+  if (command === "recover-all") return recoverAll(chain, operator, toArg());
   if (!(await chain.worldExists())) throw new Error(`no World at ${chain.worldPda.toBase58()} on ${cluster} — npm run world:init`);
   const w = await chain.world();
   const me = operator.publicKey;
@@ -350,6 +643,8 @@ async function main() {
         `  ${now > opens ? "the timer has run" : `the program will refuse this (TooEarly) until ${when(opens)}, in ${age(opens - now)}`}`,
       ], () => chain.escheat(operator));
     }
+    case "sweep-custodial":
+      return sweepCustodial(chain, operator, w, toArg());
     default:
       usage();
       throw new Error(`unknown command ${command}`);

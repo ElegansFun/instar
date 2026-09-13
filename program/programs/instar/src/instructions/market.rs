@@ -166,6 +166,9 @@ pub fn buy_listed(ctx: Context<BuyListed>, _id: u64, price: u64) -> Result<()> {
     world.total_credit = add(world.total_credit, to_seller)?;
 
     let credit = &mut ctx.accounts.seller_credit;
+    if credit.owner == Pubkey::default() {
+        world.credits_open = add(world.credits_open, 1)?;
+    }
     credit.owner = c.listed_by;
     credit.bump = ctx.bumps.seller_credit;
     credit.amount = add(credit.amount, to_seller)?;

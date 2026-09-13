@@ -100,9 +100,11 @@ describe("instar", () => {
     expect(free.gte(accounted), `${label}: free ${free} >= accounted ${accounted}`).to.be.true;
     if (!checkTotals) return;
     const vaults = (await program.account.creature.all()).reduce((s, c) => s.add(c.account.vault), new BN(0));
-    const credits = (await program.account.credit.all()).reduce((s, c) => s.add(c.account.amount), new BN(0));
+    const creditAccounts = await program.account.credit.all();
+    const credits = creditAccounts.reduce((s, c) => s.add(c.account.amount), new BN(0));
     expect(vaults.toString(), `${label}: total_vaults matches the creatures`).to.equal(w.totalVaults.toString());
     expect(credits.toString(), `${label}: total_credit matches the credits`).to.equal(w.totalCredit.toString());
+    expect(w.creditsOpen.toNumber(), `${label}: credits_open counts the credit accounts`).to.equal(creditAccounts.length);
   }
 
   /// Anchor errors carry a code; anything else is matched on its message.
@@ -236,6 +238,20 @@ describe("instar", () => {
       .signers([owner])
       .rpc();
   }
+
+  /// The rent recovery, after escheat: permissionless, so nobody signs.
+  const closeRecord = (id: BN) =>
+    program.methods
+      .closeRecord(id)
+      .accountsPartial({ world: worldPda, creature: creaturePda(id), recovery: recovery.publicKey })
+      .rpc();
+  const closeCredit = (owner: PublicKey) =>
+    program.methods
+      .closeCredit()
+      .accountsPartial({ world: worldPda, credit: creditPda(owner), recovery: recovery.publicKey })
+      .rpc();
+  const closeWorld = () =>
+    program.methods.closeWorld().accountsPartial({ world: worldPda, recovery: recovery.publicKey }).rpc();
 
   /// What a wallet does: a plain Core transfer or burn signed by the asset's
   /// owner, with no Instar instruction involved.
@@ -1077,6 +1093,10 @@ describe("instar", () => {
     const rent = await conn.getMinimumBalanceForRentExemption(info!.data.length);
     const stuck = new BN(info!.lamports - rent);
     expect(stuck.gtn(0)).to.be.true;
+    // the records back money until escheat; nothing closes before it
+    await expectError(closeRecord(charlieKept), "NotEscheated");
+    await expectError(closeCredit(alice.publicKey), "NotEscheated");
+    await expectError(closeWorld(), "NotEscheated");
     const before = await lamports(recovery.publicKey);
     await escheat();
     expect((await lamports(recovery.publicKey)).sub(before).toString(), "every last lamport reached recovery").to.equal(
@@ -1084,6 +1104,7 @@ describe("instar", () => {
     );
     expect((await lamports(worldPda)).toNumber(), "the world keeps only its rent").to.equal(rent);
     const w = await world();
+    expect(w.escheated).to.be.true;
     expect(w.totalVaults.toNumber()).to.equal(0);
     await assertSolvent("escheat", false);
     // the late keeper's claim is now honestly refused; their asset is still theirs
@@ -1102,5 +1123,60 @@ describe("instar", () => {
       if (c.status === STATUS_DEAD) expect(await assetBurned(c.id), `#${c.id} is burned`).to.be.true;
       else expect((await asset(c.id)).publicKey).to.equal(fromWeb3JsPublicKey(c.asset));
     }
+  });
+
+  it("close_world waits for every record and credit", async () => {
+    await expectError(closeWorld(), "RecordsStillOpen");
+  });
+
+  it("after escheat every record closes to recovery for exactly its rent, and a kept asset stays kept", async () => {
+    const all = await program.account.creature.all();
+    const w0 = await world();
+    expect(all.length).to.equal(w0.nextId.toNumber());
+    expect(w0.closedRecords.toNumber()).to.equal(0);
+    const keptAsset = fromWeb3JsPublicKey(await assetOf(charlieKept));
+    for (const { account: c, publicKey } of all) {
+      const rent = await lamports(publicKey);
+      expect((await creature(c.id)).id.eq(c.id), `#${c.id} readable until closed`).to.be.true;
+      const before = await lamports(recovery.publicKey);
+      await closeRecord(c.id);
+      expect((await lamports(recovery.publicKey)).sub(before).toString(), `#${c.id} rent`).to.equal(rent.toString());
+      expect(await program.account.creature.fetchNullable(publicKey)).to.be.null;
+    }
+    expect((await world()).closedRecords.toString()).to.equal(w0.nextId.toString());
+    // the record is gone; the larva as a collectible is not
+    const kept = await fetchAsset(umi, keptAsset, { skipDerivePlugins: true });
+    expect(toWeb3JsPublicKey(kept.owner).equals(charlie.publicKey)).to.be.true;
+    await expectError(closeRecord(charlieKept), "AccountNotInitialized");
+  });
+
+  it("every credit closes to recovery for exactly its rent", async () => {
+    const all = await program.account.credit.all();
+    expect(all.length).to.be.greaterThan(0);
+    expect((await world()).creditsOpen.toNumber()).to.equal(all.length);
+    await expectError(closeWorld(), "RecordsStillOpen");
+    for (const { account: c, publicKey } of all) {
+      const rent = await lamports(publicKey);
+      const before = await lamports(recovery.publicKey);
+      await closeCredit(c.owner);
+      expect((await lamports(recovery.publicKey)).sub(before).toString()).to.equal(rent.toString());
+      expect(await program.account.credit.fetchNullable(publicKey)).to.be.null;
+    }
+    expect((await world()).creditsOpen.toNumber()).to.equal(0);
+  });
+
+  it("close_world returns the World's rent to recovery, and only to recovery", async () => {
+    await expectError(
+      program.methods.closeWorld().accountsPartial({ world: worldPda, recovery: stranger.publicKey }).rpc(),
+      "WrongId"
+    );
+    const rent = await lamports(worldPda);
+    const before = await lamports(recovery.publicKey);
+    await closeWorld();
+    expect((await lamports(recovery.publicKey)).sub(before).toString()).to.equal(rent.toString());
+    expect(await conn.getAccountInfo(worldPda)).to.be.null;
+    // the collection outlives the World: a Core account, now without an authority that exists
+    const col = await fetchCollection(umi, fromWeb3JsPublicKey(collection.publicKey));
+    expect(toWeb3JsPublicKey(col.updateAuthority).equals(worldPda)).to.be.true;
   });
 });
