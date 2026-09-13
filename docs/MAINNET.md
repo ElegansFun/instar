@@ -34,9 +34,32 @@ once. A stranger calling it cannot benefit: `recovery` is fixed at
 - [ ] `npm run sim:build` passes its gates on the engine you are about to ship
 - [ ] `npm run program:test`: 31 passing, including both recovery drills
 - [ ] `npm run verify` against a scratch validator, `npm run journey` against a local world
+- [ ] a devnet rehearsal (below) has run for at least a day with epochs verifying from a browser
 - [ ] `.keys/instar-program.json` (the program's identity) and the deployer key are backed up offline
 - [ ] `INSTAR_RECOVERY` is a wallet you control and is **not** the operator key
-- [ ] the deployer wallet holds enough SOL for the program account (roughly 2.5 SOL for a ~350 KB artifact at current rent) plus fees
+- [ ] the deployer wallet holds enough SOL for the program account (about 3 SOL for the 427 KB artifact at current rent) plus fees
+
+### Devnet rehearsal
+
+The same sequence as mainnet, against devnet, with faucet SOL:
+
+```
+npm run devnet:fund -- 4              # public faucet; rate-limited per address and IP
+```
+
+When the public faucet refuses (it often does), fund the operator address it
+prints from https://faucet.solana.com, which needs a GitHub login. Then:
+
+```
+INSTAR_CLUSTER=devnet INSTAR_RECOVERY=<any wallet you control> npm run program:deploy
+INSTAR_CLUSTER=devnet npm run world
+INSTAR_URL=http://localhost:8787 npm run journey     # the airdrop route asks devnet's faucet
+```
+
+Open http://localhost:8787 and watch epochs turn VERIFIED: the page reads the
+World account from `api.devnet.solana.com` itself. Leave it a day; a world that
+survives its own restarts, a stale journal and a rate-limited RPC on devnet is
+the world you deploy.
 
 ## 2. Sequence
 

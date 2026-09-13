@@ -183,6 +183,9 @@ table.data a.chain { word-break: break-all; }
 
 .sig { font-family: var(--mono); font-size: 12px; word-break: break-all; overflow-wrap: anywhere; }
 table.data td:first-child { white-space: nowrap; }
+/* the record's value column carries hashes, addresses and long counts: it
+   must wrap rather than push the page wider than the viewport */
+table.data td.sig, table.data td.n.long { white-space: normal; text-align: left; }
 
 /* ---------- footer ---------- */
 footer.colophon { border-top: 1px solid var(--ink); margin-top: 60px; padding-top: 18px; display: grid; grid-template-columns: 2fr 7fr 3fr; gap: 36px; font-size: 14.5px; color: var(--ink-2); }
@@ -208,8 +211,10 @@ footer.colophon .mono { font-size: 11px; line-height: 1.7; }
   .measure-grid { grid-template-columns: 1fr; }
   .dish-frame { height: 52vh; min-height: 300px; }
   section.sec > .sec-body, section.sec > .sec-margin { min-width: 0; }
-section.sec > .sec-body h2 { font-size: 28px; }
-  table.data { font-size: 11.5px; }
+  section.sec > .sec-body h2 { font-size: 28px; }
+  table.data { font-size: 11.5px; table-layout: fixed; }
+  table.data td:first-child { white-space: normal; width: 34%; }
+  table.data td.n { white-space: normal; }
 }
 
 /* =====================================================================
@@ -318,4 +323,11 @@ body.bench { overflow: hidden; height: 100vh; height: 100dvh; background: var(--
   #win-brain, #win-inspect { top: auto; }
   .bench .hud { gap: 10px; font-size: 10.5px; }
   .bench .hint { display: none; }
+  /* seven buttons must fit a 390px bar: tighter padding, no letter-spacing,
+     and the right group stops floating so nothing lands off-screen */
+  .bench .dock { padding: 0; font-size: 10px; letter-spacing: 0; flex-wrap: wrap; overflow: hidden; }
+  .bench .dock button { padding: 8px 7px; flex: 1 1 auto; text-align: center; }
+  .bench .dock .right { margin-left: 0; flex: 1 1 100%; border-top: 1px solid var(--rule); }
+  .bench .dock .right button { border-left: 0; border-right: 1px solid var(--rule); }
+  .bench .dock .right button:last-child { border-right: 0; }
 }

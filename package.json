@@ -20,6 +20,7 @@
     "program:test": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-build-program.sh test",
     "program:deploy": "tsx scripts/deploy-program.mts",
     "localnet": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-localnet.sh",
+    "devnet:fund": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-devnet-fund.sh",
     "verify": "tsx scripts/verify.mts",
     "journey": "tsx scripts/journey.mts",
     "check:recovery": "tsx scripts/check-recovery.mts",
