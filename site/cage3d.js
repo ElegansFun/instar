@@ -203,7 +203,7 @@ export class Cage3D {
     const cam = this.cam = new THREE.PerspectiveCamera(38, 1, 0.3, 1200);
     cam.position.set(120, 110, 190);
     const controls = this.controls = new OrbitControls(cam, canvas);
-    controls.target.set(0, this.H * 0.3, 0);
+    controls.target.set(0, this.H * 0.38, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.maxPolarAngle = 1.5;
@@ -282,7 +282,7 @@ export class Cage3D {
     // fit the cage: half-diagonal of the box plus a margin
     const R = Math.hypot(this.G / 2, this.H / 2, this.G / 2) + 6;
     const tv = Math.tan(cam.fov * Math.PI / 360), th = tv * aspect;
-    const d = Math.max(R / tv, R / th) * (this.embedded ? 0.98 : aspect < 1.2 ? 1.05 : 1.0);
+    const d = Math.max(R / tv, R / th) * (this.embedded ? 1.05 : aspect < 1.2 ? 1.15 : 1.12);
     const c = this.controls;
     cam.position.sub(c.target).normalize().multiplyScalar(d).add(c.target);
   }
