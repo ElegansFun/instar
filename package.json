@@ -1,0 +1,40 @@
+{
+  "name": "instar",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx services/world/index.mts",
+    "world": "tsx services/world/index.mts",
+    "world:init": "tsx scripts/init-world.mts",
+    "sim:build": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-build-sim.sh && node scripts/sim-gates.mjs",
+    "sim:probe": "node scripts/sim-probe.mjs",
+    "sim:forage": "node scripts/forage-probe.mjs 12000",
+    "sim:dish": "node scripts/dish-probe.mjs",
+    "sim:bench": "node scripts/sim-bench.mjs",
+    "sim:gates": "node scripts/sim-gates.mjs",
+    "program:build": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-build-program.sh build",
+    "program:test": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-build-program.sh test",
+    "program:deploy": "tsx scripts/deploy-program.mts",
+    "localnet": "wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-localnet.sh",
+    "verify": "tsx scripts/verify.mts",
+    "journey": "tsx scripts/journey.mts",
+    "check:recovery": "tsx scripts/check-recovery.mts",
+    "roles:check": "node scripts/roles-check.mjs",
+    "census:test": "python -m unittest tools.census.test_canonical -v",
+    "census:verify": "python -m tools.census verify data/canonical/droso-winding2023-larva.census.json"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/web3.js": "^1.98.4",
+    "tsx": "^4.23.13"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "bufferutil@4.1.0": true,
+    "utf-8-validate@6.0.6": true
+  }
+}

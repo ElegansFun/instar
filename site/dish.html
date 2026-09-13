@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instar — the dish</title>
+<meta name="description" content="The live Instar dish: Drosophila first-instar larvae driven by the Winding et al. 2023 connectome, mirrored and verified in your browser, with the market and your account.">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body class="bench">
+
+<div class="boot" id="boot">loading the census and the engine</div>
+<canvas id="dish" aria-label="the dish"></canvas>
+
+<header class="hud">
+  <a class="brand" href="./"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="./mark.svg#m"></use></svg><span>Instar</span></a>
+  <span class="kv">tick <b id="h-tick">&mdash;</b></span>
+  <span class="kv">epoch <b id="h-epoch">&mdash;</b></span>
+  <span class="kv">alive <b id="h-pop">&mdash;</b> / <b id="h-cap">&mdash;</b></span>
+  <span class="kv">light <b id="h-light">&mdash;</b></span>
+  <span class="kv">temp <b id="h-temp">&mdash;</b></span>
+  <span class="kv">hash <b id="h-hash">&mdash;</b></span>
+  <span class="kv" id="h-state"><b>booting</b></span>
+  <span class="spacer"></span>
+  <a class="index" href="./">Monograph</a>
+</header>
+
+<nav class="dock" id="dock">
+  <button data-win="win-market">Market</button>
+  <button data-win="win-larvae">Larvae</button>
+  <button data-win="win-mine">Mine</button>
+  <button data-win="win-activity">Activity</button>
+  <button data-win="win-brain">Brain</button>
+  <button data-win="win-account">Account</button>
+  <span class="right"><button id="btn-fp">On the agar</button></span>
+</nav>
+<div class="hint" id="hint">drag to orbit &middot; wheel to zoom &middot; click a larva to inspect</div>
+<div class="crosshair" id="crosshair"></div>
+
+<section class="win" id="win-market">
+  <div class="win-head"><span class="t">Market</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <h4>World</h4>
+    <div class="kv2">
+      <span>cluster</span><span id="m-cluster">&mdash;</span>
+      <span>metabolism</span><span id="m-metab">&mdash;</span>
+      <span>pool</span><span id="m-pool">&mdash;</span>
+      <span>capacity</span><span id="m-cap">&mdash;</span>
+      <span>settlement</span><span id="m-settling">&mdash;</span>
+    </div>
+    <h4>Newborns offered</h4>
+    <div id="m-offers" class="stack"><div class="note">&mdash;</div></div>
+    <h4>Listed by keepers</h4>
+    <div id="m-resale" class="stack"><div class="note">&mdash;</div></div>
+    <div class="msg act-msg" id="m-msg"></div>
+    <div class="note">A purchase pays 60% into the animal's vault, 15% to metabolism, 15% to the pool, 10% to the parent's vault. A resale pays 90% to the seller, 5% and 5% to metabolism and pool; the vault travels with the animal.</div>
+  </div>
+</section>
+
+<section class="win" id="win-larvae">
+  <div class="win-head"><span class="t">Larvae</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <div class="note" id="l-summary">&mdash;</div>
+    <div id="l-list" class="stack"></div>
+  </div>
+</section>
+
+<section class="win" id="win-mine">
+  <div class="win-head"><span class="t">Mine</span><button data-min title="close">&times;</button></div>
+  <div class="win-body" id="mine-body"><div class="note">sign in to see the larvae you keep</div></div>
+</section>
+
+<section class="win" id="win-activity">
+  <div class="win-head"><span class="t">Activity</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <h4>On the plate</h4>
+    <div id="a-events" class="stack"></div>
+    <h4>On chain</h4>
+    <div id="a-tx" class="stack"><div class="note">&mdash;</div></div>
+  </div>
+</section>
+
+<section class="win" id="win-brain">
+  <div class="win-head"><span class="t">Brain</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <div class="note" id="b-summary">select a larva to watch its neurons</div>
+    <canvas id="brain-raster" width="480" height="300"></canvas>
+    <div class="legend" id="b-legend"></div>
+    <div class="note">Every dot is one of the <span data-n="nodes">&mdash;</span> neurons of the selected animal, drawn when it fired this tick. Order: sensory, then unassigned brain neurons, then descending and ring-gland cells, so input sits at the top and output at the bottom.</div>
+  </div>
+</section>
+
+<section class="win" id="win-inspect">
+  <div class="win-head"><span class="t" id="i-title">Larva</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <img class="art" id="i-art" alt="" hidden>
+    <div class="kv2" id="i-kv"></div>
+    <div id="i-market"></div>
+    <div class="msg act-msg" id="i-msg"></div>
+  </div>
+</section>
+
+<section class="win" id="win-account">
+  <div class="win-head"><span class="t">Account</span><button data-min title="close">&times;</button></div>
+  <div class="win-body">
+    <div id="acct-out">
+      <div class="note">An account is a Solana keypair the world process holds for you, encrypted under your PIN. There is no wallet to connect; that is by design and it is a trust assumption. You can withdraw everything at any time.</div>
+      <div class="field"><label for="acct-user">name</label><input id="acct-user" maxlength="24" autocomplete="username" placeholder="a name for this account"></div>
+      <div class="field"><label for="acct-pin">pin</label><input id="acct-pin" type="password" inputmode="numeric" maxlength="32" autocomplete="current-password" placeholder="4 or more digits"></div>
+      <div class="actions">
+        <button id="acct-login">Sign in</button>
+        <button id="acct-create" class="quiet">Create</button>
+      </div>
+      <div class="note">Creating is explicit so a mistyped name cannot open a new empty account by accident.</div>
+      <div id="gwrap" hidden><div class="note">or</div><div id="gbtn"></div></div>
+      <div class="msg" id="acct-msg"></div>
+    </div>
+    <div id="acct-in" hidden>
+      <div class="kv2">
+        <span>name</span><span id="acct-name">&mdash;</span>
+        <span>balance</span><span id="acct-balance">&mdash;</span>
+        <span>credit</span><span id="acct-credit">&mdash;</span>
+        <span>keeping</span><span id="acct-owned">&mdash;</span>
+      </div>
+      <h4>Deposit</h4>
+      <div class="note">Send SOL to this address on <span id="acct-cluster">the cluster</span>. The QR is drawn by this page.</div>
+      <canvas class="qr" id="acct-qr" width="148" height="148"></canvas>
+      <div class="addr" id="acct-deposit">&mdash;</div>
+      <div class="actions">
+        <button id="acct-copy" class="quiet">Copy</button>
+        <a id="acct-scan" class="chain" href="#" target="_blank" rel="noopener">explorer</a>
+        <button id="acct-airdrop" hidden>Airdrop 1 SOL</button>
+      </div>
+      <h4>Withdraw</h4>
+      <div class="field"><label for="wd-to">to</label><input id="wd-to" placeholder="Solana address" autocomplete="off"></div>
+      <div class="field"><label for="wd-amt">SOL</label><input id="wd-amt" placeholder="amount, or max" autocomplete="off"></div>
+      <div class="actions"><button id="acct-withdraw">Withdraw</button><button id="acct-logout" class="quiet">Sign out</button></div>
+      <div class="msg" id="acct-msg2"></div>
+    </div>
+  </div>
+</section>
+
+<script type="module" src="./dish.js"></script>
+</body>
+</html>

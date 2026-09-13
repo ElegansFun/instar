@@ -1,0 +1,20 @@
+node_modules/
+dist/
+target/
+.anchor/
+test-ledger/
+__pycache__/
+*.pyc
+.env
+.env.*
+.keys/
+data/world/
+data/raw/
+*.log
+.DS_Store
+
+# local editor/tooling config (never published)
+.claude/
+
+# the program keypair is a secret once deployed to a public cluster
+program/target/deploy/*-keypair.json

@@ -1,0 +1,27 @@
+[package]
+name = "instar"
+version = "0.1.0"
+description = "Instar: the on-chain world record for a population of larvae driven by the Winding 2023 larval connectome"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "instar"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+# Test builds only: shrinks the abandonment / escheat / cull timers from days
+# to seconds so a local validator can exercise the recovery paths in real time.
+# Never enable for a deployment.
+short-timers = []
+
+[dependencies]
+anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))'] }

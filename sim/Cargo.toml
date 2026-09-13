@@ -1,0 +1,23 @@
+[package]
+name = "instar_sim"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic world engine for Instar: Drosophila first-instar larvae driven by the Winding 2023 larval connectome. Integer-only fixed-point math: same seed + same genomes = bit-identical world, in WASM and native alike."
+
+# standalone crate (kept out of the Anchor workspace on purpose)
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+overflow-checks = false
+
+# The long-run test runs here: release speed, but any integer overflow panics
+# instead of silently wrapping the fossil record.
+[profile.ci]
+inherits = "release"
+overflow-checks = true

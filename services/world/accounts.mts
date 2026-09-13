@@ -1,0 +1,208 @@
+// Custodial accounts: signing in makes you a Solana keypair, held here so
+// nobody needs a wallet extension. The secret key is sealed with AES-256-GCM
+// under the world's master key; the PIN is scrypt-hashed and never stored.
+// The site says so in plain words: custodial by design.
+
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import { Keypair, PublicKey } from "@solana/web3.js";
+import { readJsonWithBackup, writeAtomic } from "./journal.mts";
+
+type Enc = { iv: string; tag: string; ct: string };
+export type Account = { pinSalt: string; pinHash: string; enc: Enc; email?: string; name?: string; created: number };
+
+export type Session = { user: string; exp: number };
+
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const USER_RE = /^[a-z0-9_.-]{3,24}$/;
+const NO_MATCH = "no account matches that name and pin — tick 'create' to make one";
+
+export class Accounts {
+  private readonly accountsPath: string;
+  private readonly sessionsPath: string;
+  private readonly masterKey: Buffer;
+  private readonly accounts: Record<string, Account>;
+  private readonly sessions = new Map<string, Session>();
+  /// wallet address -> public handle, for the journal's lineage credits
+  readonly handles: Record<string, string> = {};
+  private readonly log: (l: string) => void;
+
+  constructor(opts: { dir: string; masterKey: Buffer; log: (l: string) => void }) {
+    if (opts.masterKey.length !== 32) throw new Error("master key must be 32 bytes");
+    this.accountsPath = path.join(opts.dir, "accounts.json");
+    this.sessionsPath = path.join(opts.dir, "sessions.json");
+    this.masterKey = opts.masterKey;
+    this.log = opts.log;
+    this.accounts = this.load();
+    this.quarantineUnreadable();
+    for (const u of Object.keys(this.accounts)) this.handles[this.keypair(u).publicKey.toBase58()] = publicHandle(u, this.accounts[u]);
+    this.loadSessions();
+  }
+
+  // ---- storage --------------------------------------------------------------
+
+  /// This file is the only copy of every keeper's custodial key. Never start
+  /// with an EMPTY set because the current file failed to parse — that would
+  /// mint fresh wallets over the top of real ones. Try the backup, and refuse
+  /// to boot rather than silently orphan them.
+  private load(): Record<string, Account> {
+    if (!fs.existsSync(this.accountsPath)) return {};
+    const v = readJsonWithBackup<Record<string, Account>>(this.accountsPath, this.log);
+    if (v) return v;
+    throw new Error(
+      "accounts.json and its backup are both unreadable. Starting with an empty set would mint new " +
+      "wallets over real keepers' existing ones and orphan their larvae and balances. Restore the file."
+    );
+  }
+
+  private save() {
+    writeAtomic(this.accountsPath, JSON.stringify(this.accounts));
+  }
+
+  /// Records sealed under a different master key cannot be opened here, and
+  /// the failure would otherwise surface mid sign-in as an AES error that
+  /// tells the person nothing. Move them aside at boot; the file is kept —
+  /// it is somebody's record even if this world cannot read it.
+  private quarantineUnreadable() {
+    const stale = Object.entries(this.accounts).filter(([, a]) => !this.usable(a));
+    if (!stale.length) return;
+    const aside = this.accountsPath + ".unreadable.json";
+    let prior: Record<string, Account> = {};
+    try { prior = JSON.parse(fs.readFileSync(aside, "utf8")); } catch { /* first quarantine */ }
+    for (const [k, v] of stale) { prior[k] = v; delete this.accounts[k]; }
+    fs.writeFileSync(aside, JSON.stringify(prior));
+    this.save();
+    this.log(`${stale.length} account(s) could not be decrypted by this world — moved to ${path.basename(aside)}`);
+  }
+
+  private usable(a: Account): boolean {
+    try {
+      return this.decrypt(a.enc).length === 64;
+    } catch {
+      return false;
+    }
+  }
+
+  private encrypt(secret: Uint8Array): Enc {
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv("aes-256-gcm", this.masterKey, iv);
+    const ct = Buffer.concat([c.update(secret), c.final()]);
+    return { iv: iv.toString("hex"), tag: c.getAuthTag().toString("hex"), ct: ct.toString("hex") };
+  }
+
+  private decrypt(e: Enc): Buffer {
+    const d = crypto.createDecipheriv("aes-256-gcm", this.masterKey, Buffer.from(e.iv, "hex"));
+    d.setAuthTag(Buffer.from(e.tag, "hex"));
+    return Buffer.concat([d.update(Buffer.from(e.ct, "hex")), d.final()]);
+  }
+
+  // ---- identity -------------------------------------------------------------
+
+  keypair(user: string): Keypair {
+    const a = this.accounts[user];
+    if (!a) throw new Error("no such account");
+    return Keypair.fromSecretKey(this.decrypt(a.enc));
+  }
+
+  address(user: string): PublicKey {
+    return this.keypair(user).publicKey;
+  }
+
+  profile(user: string) {
+    const a = this.accounts[user];
+    return { user, name: a?.name, email: a?.email, handle: publicHandle(user, a) };
+  }
+
+  private create(user: string, extra: Partial<Account>): Account {
+    const kp = Keypair.generate();
+    const a: Account = { pinSalt: "", pinHash: "", enc: this.encrypt(kp.secretKey), created: Date.now(), ...extra };
+    this.accounts[user] = a;
+    this.save();
+    this.handles[kp.publicKey.toBase58()] = publicHandle(user, a);
+    return a;
+  }
+
+  /// Username + PIN. Creating requires the caller to say so: a typo in a
+  /// username must not quietly become a new empty wallet. A wrong pin and
+  /// an unknown name fail with the same words, so nobody can list who has
+  /// an account by trying names.
+  signIn(userRaw: string, pin: string, create: boolean): string {
+    const user = String(userRaw || "").trim().toLowerCase();
+    if (!USER_RE.test(user)) throw new Error("username: 3-24 characters, a-z 0-9 _ . -");
+    if (typeof pin !== "string" || pin.length < 6 || pin.length > 64) throw new Error("pin: 6-64 characters");
+    if (user.startsWith("g:")) throw new Error("that name is reserved");
+    const existing = this.accounts[user];
+    if (existing) {
+      if (!existing.pinSalt) throw new Error("this account signs in with Google");
+      if (!timingSafeEq(hashPin(pin, existing.pinSalt), existing.pinHash)) throw new Error(NO_MATCH);
+    } else {
+      if (!create) throw new Error(NO_MATCH);
+      const salt = crypto.randomBytes(16).toString("hex");
+      this.create(user, { pinSalt: salt, pinHash: hashPin(pin, salt) });
+      this.log(`account created: ${user}`);
+    }
+    return this.openSession(user);
+  }
+
+  /// Google sign-in: the browser gets an ID token from Google and posts it
+  /// here; we verify it with Google directly rather than trusting the page.
+  /// `aud` is the check that stops a token minted for somebody else's app
+  /// being replayed at ours.
+  async signInGoogle(credential: string, clientId: string): Promise<string> {
+    if (!clientId) throw new Error("google sign-in is not configured on this world");
+    if (!credential) throw new Error("missing credential");
+    const info: any = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(credential))
+      .then(r => r.json()).catch(() => null);
+    if (!info || info.aud !== clientId) throw new Error("invalid google token");
+    if (info.iss !== "accounts.google.com" && info.iss !== "https://accounts.google.com") throw new Error("bad issuer");
+    if (info.email_verified !== "true" && info.email_verified !== true) throw new Error("email not verified");
+    const user = "g:" + info.sub;
+    if (!this.accounts[user]) {
+      this.create(user, { email: info.email, name: info.name });
+      this.log(`google account created: ${info.email}`);
+    }
+    return this.openSession(user);
+  }
+
+  // ---- sessions -------------------------------------------------------------
+
+  private loadSessions() {
+    let saved: Record<string, Session> = {};
+    try { saved = JSON.parse(fs.readFileSync(this.sessionsPath, "utf8")); } catch { /* none yet */ }
+    const now = Date.now();
+    for (const [t, s] of Object.entries(saved)) if (s.exp > now && this.accounts[s.user]) this.sessions.set(t, s);
+  }
+
+  private saveSessions() {
+    const now = Date.now();
+    for (const [t, s] of this.sessions) if (s.exp < now) this.sessions.delete(t);
+    writeAtomic(this.sessionsPath, JSON.stringify(Object.fromEntries(this.sessions)));
+  }
+
+  private openSession(user: string): string {
+    const token = crypto.randomBytes(24).toString("hex");
+    this.sessions.set(token, { user, exp: Date.now() + SESSION_TTL_MS });
+    this.saveSessions();
+    return token;
+  }
+
+  sessionUser(token: string | undefined): string | null {
+    const s = token ? this.sessions.get(token) : undefined;
+    if (!s || s.exp < Date.now()) return null;
+    return s.user;
+  }
+}
+
+function hashPin(pin: string, salt: string) {
+  return crypto.scryptSync(pin, salt, 32).toString("hex");
+}
+
+function timingSafeEq(a: string, b: string) {
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
+export function publicHandle(user: string, a?: Account) {
+  return user.startsWith("g:") ? (a?.name || "keeper").split(/\s+/)[0].toLowerCase().slice(0, 16) : user;
+}

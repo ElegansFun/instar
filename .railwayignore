@@ -1,0 +1,14 @@
+.git
+.keys
+.claude
+node_modules
+target
+sim/target
+program/target
+program/node_modules
+program/test-ledger
+test-ledger
+data/raw
+data/world
+legacy
+*.log

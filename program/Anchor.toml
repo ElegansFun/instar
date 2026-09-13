@@ -1,0 +1,45 @@
+[toolchain]
+anchor_version = "0.31.0"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+
+[programs.devnet]
+instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+
+[programs.mainnet]
+instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+
+[registry]
+url = "https://api.apr.dev"
+
+# The wallet is the local operator key, kept under /mnt/c so the Windows-side
+# test runner (see scripts/program-test-host.sh) can read the same file.
+[provider]
+cluster = "localnet"
+wallet = "/mnt/c/tech/connectomes/.keys/operator.json"
+
+# The test suite waits out the short-timers feature's timers in real time, so
+# the mocha timeout is generous. node_modules lives in program/ (not the repo
+# root). The host script picks a Node that can load @solana/web3.js.
+[scripts]
+test = "bash ../scripts/program-test-host.sh"
+
+[test]
+startup_wait = 10000
+shutdown_wait = 2000
+
+# Own ports (rpc, faucet, gossip, dynamic range), so the suite can run beside
+# the world process's localnet on 8899/8000. Agave 4.x refuses anchor's default
+# bind address 0.0.0.0 for gossip, so bind to loopback explicitly.
+[test.validator]
+bind_address = "127.0.0.1"
+ledger = ".anchor/test-ledger"
+rpc_port = 8999
+faucet_port = 9990
+gossip_port = 9199
+dynamic_port_range = "9200-9250"

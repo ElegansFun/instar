@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instar — a dish of larvae driven by the real insect connectome, settled on Solana</title>
+<meta name="description" content="A persistent world of Drosophila first-instar larvae, each driven by the Winding et al. 2023 larval brain connectome (2,952 neurons), living on an agar dish. Every larva is a record on Solana; buying mints it, resale moves it, death burns it.">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <a class="mark" href="./">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><use href="./mark.svg#m"></use></svg>
+    <span class="wordmark">Instar</span>
+  </a>
+  <div class="running-head" id="running-head">Drosophila melanogaster, first instar &middot; Winding et al. 2023 &middot; Solana</div>
+  <nav>
+    <a href="./dish.html">The dish</a>
+    <a href="#real">Real</a>
+    <a href="#brain">Brain</a>
+    <a href="#dish">Dish</a>
+    <a href="#market">Market</a>
+    <a href="#record">Record</a>
+    <a href="#licence">Licence</a>
+  </nav>
+</header>
+
+<div class="title-block">
+  <div>
+    <h1>A dish of larvae,<br>each driven by a real<br>insect brain <i>wiring diagram.</i></h1>
+    <p class="lede">Instar is a persistent world of <i>Drosophila melanogaster</i> first-instar larvae on an agar plate. Every larva runs the whole-brain connectome published by Winding et al. in 2023: the same <span data-n="nodes">&mdash;</span> neurons, the same <span data-n="edges">&mdash;</span> synaptic connections. It senses, crawls, feeds, molts and breeds on its own. Each one is a record on Solana: buying mints it, resale moves it, death burns it.</p>
+  </div>
+  <div class="abstract" id="abstract">
+    <div><b>Census</b> <span data-n="nodes">&mdash;</span> neurons, <span data-n="edges">&mdash;</span> chemical edges, <span data-n="syn">&mdash;</span> synapses</div>
+    <div><b>Engine</b> integer, deterministic, <span data-n="tickrate">&mdash;</span> ticks/s, epoch <span data-n="epoch">&mdash;</span> ticks</div>
+    <div><b>Plate</b> <span data-n="grid">&mdash;</span>&times;<span data-n="grid">&mdash;</span> cells, disc of radius <span data-n="radius">&mdash;</span>, wall outside</div>
+    <div><b>Chain</b> <span id="ab-chain">no world reachable from this page</span></div>
+    <div><b>This page</b> <span id="ab-mode">runs its own copy of the engine and verifies the world's epoch hashes</span></div>
+  </div>
+</div>
+
+<figure class="figure" id="live">
+  <div class="fig-head">
+    <span class="fig-label">Figure 1 &middot; the dish, live</span>
+    <span class="status" id="status">
+      <span>cluster <b id="st-cluster">&mdash;</b></span>
+      <span>tick <b id="st-tick" class="num">&mdash;</b></span>
+      <span>epoch <b id="st-epoch" class="num">&mdash;</b></span>
+      <span>alive <b id="st-pop" class="num">&mdash;</b></span>
+      <span id="st-verify"><b>booting</b></span>
+    </span>
+  </div>
+  <div class="dish-frame">
+    <canvas id="dish" aria-label="the dish"></canvas>
+    <div class="overlay-note" id="dish-note">drag to orbit &middot; click a larva to read it</div>
+    <div class="enter"><a href="./dish.html">Open the full dish &rarr;</a></div>
+  </div>
+  <figcaption id="fig1-cap">The plate as this page computes it. <b>Yeast colonies</b> pale, <b>fruit</b> brown, <b>pools</b> grey, the <b>lit patch</b> white; the wash darkens with moisture and with night. Each larva is a translucent tube with dark mouth hooks; the gut inside darkens as the animal fills. Peristalsis is drawn from the engine's per-segment bend. Nothing here is recorded video; the numbers in the status line are read from the engine every frame.</figcaption>
+</figure>
+
+<section class="sec" id="real">
+  <div class="sec-no"><b>1</b>What is real</div>
+  <div class="sec-body">
+    <h2>What the connectome gives, and what it does not.</h2>
+    <p class="lead">The wiring is real. The dynamics are ours. Every claim on this page is meant to survive that sentence.</p>
+    <p>Winding and colleagues reconstructed the brain of a first-instar larva from electron microscopy: every neuron, every chemical synapse, with the number of synaptic contacts between each pair of cells. That dataset is the entire nervous system of every animal in this dish. The engine loads its <span data-n="nodes">&mdash;</span> nodes and <span data-n="edges">&mdash;</span> weighted edges verbatim from the canonical file below, whose Merkle root is quoted in section 6.<sup>1</sup></p>
+    <p>The dataset does not give neuron dynamics, neurotransmitter identities for most cells, neuromodulation, the ventral nerve cord, or muscles. So the engine supplies the same integer threshold unit for every neuron (a potential, a refractory counter, a fired flag), assigns a small set of roles from the paper's own annotations (which sensory neurons are olfactory, gustatory, thermosensory; which descending neurons leave the brain toward the nerve cord or the feeding apparatus; which cells form the ring gland), and treats the rest of the body as a few equations. A larva here is <i>descended from</i> the real larval connectome. It is not a real larva, and it does not behave exactly like one.<sup>2</sup></p>
+    <p>What the wiring does do is measurable, and it is measured, not asserted. The figure below is filled from probe runs over the checked-in engine; each number carries the horizon it was measured over.<sup>3</sup></p>
+    <div id="measurements" class="measure-grid" hidden></div>
+    <div id="measurements-note" class="foot" hidden></div>
+    <div class="foot">
+      <div class="fn"><sup>1</sup><span>The canonical census is regenerated from the paper's supplementary tables by a converter in this repository and is byte-verifiable; the page you are reading loads it directly, and the number of neurons in the abstract is counted from it, not typed in.</span></div>
+      <div class="fn"><sup>2</sup><span>No claim of a biological simulation is made. The words used here are &ldquo;driven by&rdquo; and &ldquo;descended from&rdquo;. Where a behaviour is described (klinotaxis, feeding, ecdysone gating) it names the engine rule, not a property of the animal.</span></div>
+      <div class="fn"><sup>3</sup><span>Every quoted number is produced by a script in <span class="mono">scripts/</span> and stated with its tick horizon. If this figure is hidden, the measurements file has not been generated for this build and no number is shown in its place.</span></div>
+    </div>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Roles the engine reads from the census</b><br>ORN, gustatory (external, pharyngeal), thermo (cold, warm), visual, gut, respiratory from the sensory annotations; mechano, nociceptive, proprioceptive from ascending neurons; descending to VNC (left, right, unpaired) for locomotion; descending to SEZ for feeding; ring gland for ecdysone.</div>
+    <div class="mnote"><b>Neuron model</b><br>One integer unit for all <span data-n="nodes">&mdash;</span> cells. Propagation is event-driven along the census edges. Fixed point 16.16; xorshift64* random source; no floating point anywhere in the engine.</div>
+    <div class="mnote"><b>Hash</b><br>Every <span data-n="epoch">&mdash;</span> ticks the engine hashes population, positions, genomes and every neuron's state (FNV-1a, 64 bit). The world posts that hash to its account on chain; this page recomputes it and reads the account back.</div>
+  </aside>
+</section>
+
+<section class="sec" id="brain">
+  <div class="sec-no"><b>2</b>The brain</div>
+  <div class="sec-body">
+    <h2><span data-n="nodes">&mdash;</span> neurons, laid out by their own connections.</h2>
+    <p>Every node in the census, positioned by a force layout that uses all <span data-n="edges">&mdash;</span> edges, coloured by the role the engine assigns it. Grey nodes are the majority: brain neurons the engine drives purely through their wiring, with no role at all. Hover for a cell's id, annotation and degree; click to pin it. Amber lines leave the pinned cell, blue lines arrive at it.</p>
+    <div class="fig2 wide">
+      <div class="frame">
+        <canvas id="brainmap" style="height: 560px"></canvas>
+        <div class="tip" id="brain-tip"></div>
+        <div class="tools" id="brain-tools">
+          <button data-minw="10">w &ge; 10</button>
+          <button data-minw="5" class="on">w &ge; 5</button>
+          <button data-minw="2">w &ge; 2</button>
+          <button data-minw="1">all</button>
+          <button data-relayout>relayout</button>
+        </div>
+      </div>
+      <div class="fig-cap"><span class="fig-no">Figure 2</span><span data-edges>&mdash;</span>. Layout uses every edge; the drawing shows edges at or above the chosen synapse count so the map stays legible. Ctrl-wheel zooms, drag pans.</div>
+    </div>
+  </div>
+  <aside class="sec-margin">
+    <table class="data" id="role-legend"><tbody></tbody></table>
+    <div class="mnote">Counts are computed from the canonical file at load. Sensory and ascending nodes with an annotation outside this table stay unassigned.</div>
+  </aside>
+</section>
+
+<section class="sec" id="dish">
+  <div class="sec-no"><b>3</b>The dish</div>
+  <div class="sec-body">
+    <h2>An agar plate with weather.</h2>
+    <p>The plate is a disc of radius <span data-n="radius">&mdash;</span> cells inside a <span data-n="grid">&mdash;</span>&times;<span data-n="grid">&mdash;</span> grid. Outside the disc is wall; a one-cell rim runs inside it. Every cell carries food (yeast), moisture, and one of seven substrates. Light follows a day of 16,384 ticks; temperature drifts on a period of 131,072 ticks around the 24&nbsp;&deg;C baseline the thermosensory neurons compare against. Both are pure functions of the tick, so they are the same in every mirror.</p>
+    <table class="data" id="biome-table">
+      <thead><tr><th>Substrate</th><th>What it does</th><th class="n">Cells now</th></tr></thead>
+      <tbody>
+        <tr data-b="1"><td><span class="sw" style="background:#E9E2C9"></span>agar</td><td>plain; regrows slowly, low food cap</td><td class="n">&mdash;</td></tr>
+        <tr data-b="2"><td><span class="sw" style="background:#F6F1DE"></span>yeast colony</td><td>regrows fast, high cap; where larvae feed</td><td class="n">&mdash;</td></tr>
+        <tr data-b="3"><td><span class="sw" style="background:#B07435"></span>rotting fruit</td><td>very high food, very slow regrow</td><td class="n">&mdash;</td></tr>
+        <tr data-b="4"><td><span class="sw" style="background:#E0D3B0"></span>dry crust</td><td>low moisture: desiccation drains energy; nociceptors fire</td><td class="n">&mdash;</td></tr>
+        <tr data-b="5"><td><span class="sw" style="background:#B0BEBE"></span>pool</td><td>liquid: no eating, respiratory neurons fire, drowning drains energy</td><td class="n">&mdash;</td></tr>
+        <tr data-b="6"><td><span class="sw" style="background:#FBF8ED"></span>lit patch</td><td>constant light; visual neurons fire regardless of the hour</td><td class="n">&mdash;</td></tr>
+        <tr data-b="7"><td><span class="sw" style="background:#D9D0B5"></span>rim</td><td>one-cell ring inside the wall; mechanosensors fire on approach</td><td class="n">&mdash;</td></tr>
+      </tbody>
+    </table>
+    <h2 style="font-size:24px; margin-top:26px;">What kills a larva.</h2>
+    <table class="data">
+      <thead><tr><th>Cause</th><th>Rule</th><th class="n">This page has seen</th></tr></thead>
+      <tbody id="death-table">
+        <tr data-c="1"><td>starved</td><td>energy reaches zero; a larva whose descending-SEZ neurons stay silent cannot eat</td><td class="n">0</td></tr>
+        <tr data-c="2"><td>senescence</td><td>age limit reached</td><td class="n">0</td></tr>
+        <tr data-c="3"><td>killed</td><td>a starving neighbour (energy under 6,000) attacks one with more than 1.5&times; its own</td><td class="n">0</td></tr>
+        <tr data-c="4"><td>desiccated</td><td>too long on dry crust</td><td class="n">0</td></tr>
+        <tr data-c="5"><td>drowned</td><td>too long in a pool</td><td class="n">0</td></tr>
+        <tr data-c="6"><td>culled</td><td>the keeper asked; settled on chain at 85% to the keeper</td><td class="n">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Now on the plate</b><div class="kv" id="dish-now">&mdash;</div></div>
+    <div class="mnote"><b>Reproduction</b><br>Ecdysone accumulates from ring-gland firings. A larva with energy &ge; 45,000 and ecdysone over threshold, with a partner within 4 cells holding &ge; 12,000, produces a child by crossover with 1&ndash;6 signed mutations to edge weights. The child spawns adjacent.</div>
+    <div class="mnote"><b>Sensing</b><br>Probes read two cells ahead of the head. Olfaction is the change in food odour between ticks (klinotaxis); external taste is food underfoot; pharyngeal taste is what was actually eaten last tick.</div>
+  </aside>
+</section>
+
+<section class="sec" id="market">
+  <div class="sec-no"><b>4</b>The market</div>
+  <div class="sec-body">
+    <h2>Where the lamports go.</h2>
+    <p>Money lives as lamports on the world account, a program-derived address on Solana. Four pools are tracked inside it: each larva's <b>vault</b>, the <b>metabolism</b> that sets how many animals the plate supports, the <b>pool</b> that pays living animals, and <b>credits</b> owed to people. The program keeps one invariant on every instruction: the account's balance above rent covers all four.</p>
+    <table class="data">
+      <thead><tr><th>Flow</th><th class="n">Vault</th><th class="n">Metabolism</th><th class="n">Pool</th><th>Other</th></tr></thead>
+      <tbody>
+        <tr><td>buy a newborn</td><td class="n">60%</td><td class="n">15%</td><td class="n">15%</td><td>10% to the parent's vault (to pool if the parent is not owned)</td></tr>
+        <tr><td>resale</td><td class="n">&mdash;</td><td class="n">5%</td><td class="n">5%</td><td>90% credited to the seller; the vault travels with the animal</td></tr>
+        <tr><td>death</td><td class="n">&mdash;</td><td class="n">35%</td><td class="n">15%</td><td>40% split equally among living heirs (dust to pool); 10% credited to the keeper (to metabolism if none)</td></tr>
+        <tr><td>cull</td><td class="n">&mdash;</td><td class="n">15%</td><td class="n">&mdash;</td><td>85% credited to the keeper</td></tr>
+      </tbody>
+    </table>
+    <div class="split" style="margin-top:22px">
+      <div>
+        <div class="eyebrow">Live</div>
+        <table class="data" id="econ-table">
+          <tbody>
+            <tr><td>metabolism</td><td class="n" id="ec-metab">&mdash;</td></tr>
+            <tr><td>pool</td><td class="n" id="ec-pool">&mdash;</td></tr>
+            <tr><td>capacity</td><td class="n" id="ec-cap">&mdash;</td></tr>
+            <tr><td>alive on chain</td><td class="n" id="ec-alive">&mdash;</td></tr>
+            <tr><td>operator balance</td><td class="n" id="ec-opbal">&mdash;</td></tr>
+            <tr><td>settlement</td><td class="n" id="ec-settling">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="eyebrow">Newborns offered</div>
+        <table class="data" id="offers-table"><tbody><tr><td class="faint">&mdash;</td></tr></tbody></table>
+        <p class="small dim" style="margin-top:8px">Buying, listing and withdrawing happen on <a href="./dish.html">the dish page</a>, where you have an account.</p>
+      </div>
+    </div>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Custody</b><br>There is no wallet adapter. An account here is a Solana keypair the world process holds for you, encrypted under your PIN. You can withdraw everything to any address at any time. That is a deliberate design and a real trust assumption; read it as one.</div>
+    <div class="mnote"><b>If the operator disappears</b><br>After 90 days without an operator action anyone may begin wind-down; keepers reclaim their vaults as credit; after 180 days everything above rent sweeps to the recovery address. No lamport is stranded by design.</div>
+  </aside>
+</section>
+
+<section class="sec" id="record">
+  <div class="sec-no"><b>5</b>The record</div>
+  <div class="sec-body record">
+    <h2>What is written on chain.</h2>
+    <p>Each larva is a <span class="mono">Creature</span> account: id, parent, generation, birth tick, genome hash, keeper, vault, price, status. It is never closed. Every <span data-n="epoch">&mdash;</span> ticks the operator posts the engine's state hash to the <span class="mono">World</span> account; this page computes the same hash from the same journal, reads the account from the cluster, and compares. VERIFIED below means the account agrees; "matches journal" means only the operator's journal has been compared.</p>
+    <table class="data">
+      <tbody>
+        <tr><td>cluster</td><td class="n" id="rc-cluster">&mdash;</td></tr>
+        <tr><td>program</td><td class="sig" id="rc-program">&mdash;</td></tr>
+        <tr><td>world account</td><td class="sig" id="rc-world">&mdash;</td></tr>
+        <tr><td>operator</td><td class="sig" id="rc-operator">&mdash;</td></tr>
+        <tr><td>seed</td><td class="sig" id="rc-seed">&mdash;</td></tr>
+        <tr><td>verified by this page</td><td class="n" id="rc-verified">&mdash;</td></tr>
+        <tr><td>world account read</td><td class="sig" id="rc-chain">&mdash;</td></tr>
+      </tbody>
+    </table>
+    <div class="eyebrow" style="margin-top:22px">Latest epochs</div>
+    <table class="data" id="epoch-table">
+      <thead><tr><th class="n">Epoch</th><th class="n">Tick</th><th>State hash</th><th>This page</th><th>Signature</th></tr></thead>
+      <tbody><tr><td colspan="5" class="faint">&mdash;</td></tr></tbody>
+    </table>
+    <div class="eyebrow" style="margin-top:22px">Latest transactions</div>
+    <table class="data" id="tx-table">
+      <thead><tr><th>When</th><th>Kind</th><th class="n">Id</th><th>Signature</th></tr></thead>
+      <tbody><tr><td colspan="4" class="faint">&mdash;</td></tr></tbody>
+    </table>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Reading the hash column</b><br>&ldquo;verified&rdquo; means this page reached that tick itself, hashed its own engine memory, got the same 64 bits the journal shows, and then read the <span class="mono">World</span> account from the cluster and found the same bytes there. &ldquo;matches journal&rdquo; means the journal agrees but the account has not been read for that epoch: the post is still pending, the chain has since moved to a newer epoch, or the RPC could not be reached from this browser. &ldquo;before join&rdquo; means the page joined the world from a snapshot after that epoch; add <span class="mono">?full=1</span> to the address to replay all history from genesis and check every epoch.</div>
+  </aside>
+</section>
+
+<section class="sec" id="licence">
+  <div class="sec-no"><b>6</b>Licence and citation</div>
+  <div class="sec-body">
+    <h2>Whose work this stands on.</h2>
+    <p>Winding, M., Pedigo, B.D., Barnes, C.L., Patsolic, H.G., Park, Y., Kazimiers, T., Fushiki, A., Andrade, I.V., Khandelwal, A., Valdes-Aleman, J., Li, F., Randel, N., Barsotti, E., Correia, A., Fetter, R.D., Hartenstein, V., Priebe, C.E., Vogelstein, J.T., Cardona, A., Zlatic, M. (2023). <i>The connectome of an insect brain.</i> Science 379, eadd9330. <a class="chain" href="https://doi.org/10.1126/science.add9330" rel="noopener">doi:10.1126/science.add9330</a>. Data used under <a class="chain" href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>, from the author-manuscript deposit (Data S1/S2). The census file used here is a conversion of those tables, not a redistribution of the originals.</p>
+    <table class="data">
+      <tbody>
+        <tr><td>census id</td><td class="sig" id="lc-id">&mdash;</td></tr>
+        <tr><td>census root (sha-256 Merkle)</td><td class="sig" id="lc-root">&mdash;</td></tr>
+        <tr><td>type</td><td>Instrument Serif and IBM Plex Mono, SIL Open Font License 1.1, served from this site</td></tr>
+        <tr><td>renderer</td><td>three.js, MIT, vendored</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote">The larval brain data belongs to its authors. Nothing on this page should be read as their endorsement of anything on this page.</div>
+  </aside>
+</section>
+
+<footer class="colophon">
+  <div class="mono">Instar<br>a persistent world<br>settled on Solana</div>
+  <div>
+    <p>There is no wallet to connect. Accounts here are custodial by design: the world process holds a keypair for you and signs with it when you ask. Deposit only what you are prepared to leave in someone else's custody, and withdraw whenever you like.</p>
+    <p>Larvae die. When one dies its record is burned and its vault is paid out under the rules in section 4; a purchase can end with nothing but a settlement. Nothing here is an investment, and no number on this page is a forecast.</p>
+  </div>
+  <div class="mono" id="colophon-right">every number above is read from the census file, the engine in this tab, or the world's journal</div>
+</footer>
+
+</div>
+<script type="module" src="./index.js"></script>
+</body>
+</html>
