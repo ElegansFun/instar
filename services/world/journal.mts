@@ -18,6 +18,16 @@ export type Entry =
 export type EpochRec = { epoch: number; tick: number; hash: string; sig: string | null; population: number; maxGen: number };
 export type TxRec = { t: number; kind: string; id?: number; sig: string; ok: boolean };
 export type LineageName = { name: string; by: string; handle: string; tick: number };
+/// What scripts/verify-epoch.mts has posted: the CLI verifier is the public
+/// verification path, and the site reports its date and count. `epochs` is
+/// the set of DISTINCT epoch numbers that verified (a re-run of the same
+/// epoch adds nothing); `verdicts` keeps every verdict per epoch, so a
+/// MISMATCH is on the record even after a later epoch verifies.
+export type Verdict = "VERIFIED" | "MISMATCH";
+export type VerifierRec = {
+  at: string; epoch: number; hash: string; verdict: Verdict; sig: string | null;
+  epochs: number[]; verdicts: Record<string, Verdict>;
+};
 
 /// Chain work named but not yet landed. Persisted so a restart resumes it
 /// instead of skipping a creature id and wedging every birth after it.
@@ -56,6 +66,7 @@ export type Journal = {
   txlog: TxRec[];
   ops: Op[];
   lineageNames: Record<string, LineageName>;
+  verifier: VerifierRec | null;
 };
 
 export type JournalOpts = {
@@ -94,6 +105,38 @@ export function writeAtomic(target: string, data: string | Buffer) {
     // the backup is best effort; the rename below is what protects the record
   }
   fs.renameSync(tmp, target);
+}
+
+/// The same swap for a large file written off the tick loop (the snapshot
+/// images), with no .bak: the image is regenerated every five minutes and a
+/// torn one is refused at boot, so a copy would be 70 MB of dead weight.
+/// The rename is retried with backoff for up to RENAME_RETRY_MS when the
+/// target is open elsewhere (EPERM/EBUSY: Windows refuses to replace a file
+/// that /api/snapshot is still streaming); past that the temp file is
+/// removed and the previous image stays in place.
+const RENAME_RETRY_MS = 10_000;
+export async function writeAtomicAsync(target: string, data: Buffer) {
+  const tmp = target + ".tmp";
+  const fh = await fs.promises.open(tmp, "w");
+  try {
+    await fh.writeFile(data);
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  const until = Date.now() + RENAME_RETRY_MS;
+  for (let delay = 250; ; delay = Math.min(delay * 2, 2000)) {
+    try {
+      await fs.promises.rename(tmp, target);
+      return;
+    } catch (e: any) {
+      if ((e?.code !== "EPERM" && e?.code !== "EBUSY") || Date.now() + delay > until) {
+        await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
+        throw e;
+      }
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 }
 
 export function readJsonWithBackup<T>(file: string, log: (l: string) => void): T | null {
@@ -172,7 +215,7 @@ export class JournalStore {
       name: "instar", cluster: opts.cluster, programId: opts.programId,
       seed: opts.seed.toString(), era: 1, tickrate: opts.tickrate, epochInterval: opts.epochInterval,
       tick: 0, entries: [], epochs: [], chainSeq: 0, lastEpoch: 0, lastCreditEpoch: 0,
-      parents: {}, children: {}, eatenBase: {}, creditedEpoch: {}, txlog: [], ops: [], lineageNames: {},
+      parents: {}, children: {}, eatenBase: {}, creditedEpoch: {}, txlog: [], ops: [], lineageNames: {}, verifier: null,
     };
   }
 
@@ -202,7 +245,14 @@ export class JournalStore {
       this.log(`journal is for ${parsed.cluster}:${parsed.programId}, not ${world} — starting fresh`);
       return fresh;
     }
-    return { ...fresh, ...parsed };
+    const journal = { ...fresh, ...parsed };
+    // before the verifier kept a set, `epochs` was a count that grew on every run
+    const v = journal.verifier as (VerifierRec & { epochs: unknown }) | null;
+    if (v && !Array.isArray(v.epochs)) {
+      v.epochs = v.verdict === "VERIFIED" ? [v.epoch] : [];
+      v.verdicts = { [v.epoch]: v.verdict };
+    }
+    return journal;
   }
 
   /// A journal that has silently stopped advancing while the world keeps

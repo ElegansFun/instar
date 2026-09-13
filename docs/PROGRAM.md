@@ -1,7 +1,7 @@
 # The Instar program
 
 `program/programs/instar` is the Anchor 0.31 program that holds the permanent
-record of the world: every larva's identity and ancestry as a Metaplex Core
+record of the world: every fly's identity and ancestry as a Metaplex Core
 asset in the world's collection, the lamports it has earned, the market it
 trades in, and the engine's state hash committed every epoch. The simulation
 itself runs off-chain in `services/world`; nothing here runs a neuron.
@@ -62,12 +62,12 @@ totals against the sum of every creature and credit account after each flow.
 | operator              | Pubkey   | the crank: registers births, settles deaths, posts epochs   |
 | pending_operator      | Pubkey   | two-step hand-over                                          |
 | recovery              | Pubkey   | where an abandoned world's money goes; set at init          |
-| collection            | Pubkey   | the Core collection every larva's asset belongs to; set at init |
-| next_id               | u64      | the next larva id the engine may register                   |
-| total_alive           | u64      | larvae not DEAD                                             |
+| collection            | Pubkey   | the Core collection every fly's asset belongs to; set at init |
+| next_id               | u64      | the next fly id the engine may register                   |
+| total_alive           | u64      | flies not DEAD                                             |
 | last_epoch, last_epoch_tick, last_state_hash | u64, u64, [u8;32] | the last epoch commitment  |
 | metabolism            | u64      | treasury that sets carrying capacity                        |
-| pool                  | u64      | treasury that pays living larvae each epoch                 |
+| pool                  | u64      | treasury that pays living flies each epoch                 |
 | total_vaults          | u64      | sum of every creature vault                                 |
 | total_credit          | u64      | sum of every credit                                         |
 | last_operator_action  | i64      | unix time of the last operator instruction                  |
@@ -87,10 +87,10 @@ after escheat:
 | generation        | u32      |                                                        |
 | birth_tick, death_tick | u64 |                                                        |
 | genome_hash       | [u8;32]  | the engine's genome digest at birth                    |
-| asset             | Pubkey   | the larva's Core asset; kept after the burn as record  |
-| listed_by         | Pubkey   | who listed the larva for resale; default when not listed |
+| asset             | Pubkey   | the fly's Core asset; kept after the burn as record  |
+| listed_by         | Pubkey   | who listed the fly for resale; default when not listed |
 | listed_at         | i64      | when; a listing expires LISTING_MAX_AGE later          |
-| vault             | u64      | lamports the larva holds, backed by World              |
+| vault             | u64      | lamports the fly holds, backed by World              |
 | sale_price        | u64      | OFFERED: primary price; OWNED: resale price, 0 = not listed |
 | status            | u8       | 1 OFFERED, 2 OWNED, 3 WILD, 4 DEAD (0 never on chain)  |
 | pending_cull, cull_requested_at | bool, i64 |                                         |
@@ -108,13 +108,13 @@ replayed engine compares the last 8 bytes of the account field to that value.
 transaction's signer pays its rent and the world counts it in `credits_open`.
 Closed only by `close_credit` after escheat.
 
-## The larva as an NFT
+## The fly as an NFT
 
-Who keeps a larva is not a field of `Creature`: it is the `owner` of the
-larva's Metaplex Core asset (program `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`,
+Who keeps a fly is not a field of `Creature`: it is the `owner` of the
+fly's Metaplex Core asset (program `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`,
 crate `mpl-core` 0.11 with the `anchor` feature). Wallets and marketplaces
-index Core collections on their own, so a larva shows up where its keeper's
-other NFTs do, and a keeper hands a larva on with a plain Core transfer; the
+index Core collections on their own, so a fly shows up where its keeper's
+other NFTs do, and a keeper hands a fly on with a plain Core transfer; the
 program has no `transfer` instruction.
 
 `init_world` creates the collection (`CreateCollectionV2`, name `Instar`,
@@ -129,7 +129,7 @@ addable only at creation:
 | plugin | what the program does with it |
 | --- | --- |
 | `PermanentTransferDelegate` | `buy_listed` moves the asset from the seller to the buyer |
-| `PermanentFreezeDelegate` | `request_cull` freezes the asset; a frozen asset cannot be transferred, so a larva awaiting its cull cannot leave the dish |
+| `PermanentFreezeDelegate` | `request_cull` freezes the asset; a frozen asset cannot be transferred, so a fly awaiting its cull cannot leave the cage |
 | `PermanentBurnDelegate` | `settle_death`, `force_settle_cull` and `reclaim_vault` burn the asset; the burn goes through a freeze |
 | `Attributes` | `generation`, `parent` (id, or `founder`), `birth_tick`, `genome` (the 16-hex-character digest) for wallets to show |
 
@@ -141,13 +141,13 @@ that Core owns the account (`AssetMismatch`), and the collection against
 the signer to be that owner (`NotOwner`); `unlist` accepts the owner or
 `listed_by`; the keeper paid by `settle_death` and `force_settle_cull` is the
 owner at settlement, and their `keeper_credit` PDA is checked against it
-(a WILD or OFFERED larva is owned by the World PDA and has no keeper).
+(a WILD or OFFERED fly is owned by the World PDA and has no keeper).
 
 The keeper share is a pull payment keyed by that owner: it lands in the
 Credit PDA of whatever account holds the asset when the death is settled, and
 `withdraw` needs that account's signature. An asset sitting in a
 marketplace escrow, or sent to any address that cannot sign, forfeits its
-keeper share to a credit nobody can draw (until escheat). Keep a larva in a
+keeper share to a credit nobody can draw (until escheat). Keep a fly in a
 wallet you sign with; list it through `list`, from that wallet, rather than
 on an external marketplace, if you want its death share.
 
@@ -155,35 +155,35 @@ A listing is only good while the asset is still in the lister's hands, and
 for LISTING_MAX_AGE after it was made. `list` records `listed_by` and
 `listed_at`; `buy_listed` requires `asset.owner == listed_by` and
 `now - listed_at <= LISTING_MAX_AGE`, and pays `listed_by`'s credit, so a
-larva moved with a native transfer since it was listed is `NotForSale`
+fly moved with a native transfer since it was listed is `NotForSale`
 until the new owner lists it themselves (or clears the stale listing with
 `unlist`), and a listing that outlives the timer is `NotForSale` until it is
 made again. The program cannot see a native transfer, so without the timer
 a listing voided by the asset leaving `listed_by`'s hands would come back
 to life the moment the asset returned there, at a price consented to for a
-larva that has since kept earning.
+fly that has since kept earning.
 
 Core does not delete a burned asset: it leaves a one-byte `Uninitialized`
 stub behind, still owned by Core, and refunds the rest of the rent to the
 payer. `Creature.asset` keeps pointing at it as the record of which asset
-the larva was; the rent of a birth goes back to whoever settles the death.
+the fly was; the rent of a birth goes back to whoever settles the death.
 
 A keeper can burn an unfrozen asset from their wallet, as they can any Core
-asset they own; the record does not see it. The larva stays alive on chain
+asset they own; the record does not see it. The fly stays alive on chain
 until the engine kills it, but nobody owns the stub: `list`, `request_cull`
 and `reclaim_vault` load it as `WrongStatus`. `settle_death` alone accepts
 the stub (its `asset` is an unchecked account pinned to `creature.asset`
 and Core's ownership, read by hand): a burned asset means no keeper, the
-keeper share goes to metabolism as for a larva the World held, `keeper_credit`
+keeper share goes to metabolism as for a fly the World held, `keeper_credit`
 must be absent, and there is nothing to burn. `force_settle_cull` and
-`reclaim_vault` keep the strict load: a larva awaiting its cull is frozen
+`reclaim_vault` keep the strict load: a fly awaiting its cull is frozen
 and Core refuses its owner's burn, so no cull ever meets a stub; and a
 reclaim needs the owner's signature, which a burned asset has nobody to
-give. The vault of a larva whose keeper burned it is settled by the operator
+give. The vault of a fly whose keeper burned it is settled by the operator
 like any death, and in an abandoned world it waits for escheat.
 
 A keeper can also send the asset back to the World PDA with a plain
-transfer. The larva is then OWNED with the dish as owner, nothing a keeper
+transfer. The fly is then OWNED with the cage as owner, nothing a keeper
 can sign for; `open_offer` accepts it (OWNED and `asset.owner == World PDA`,
 the listing cleared) so the operator can put it up for sale again as if
 newborn. The service never does this on its own: it is operator tooling.
@@ -206,20 +206,20 @@ is the asset's current owner; instructions that touch the asset also take
 | `heartbeat()` | operator | refreshes `last_operator_action` |
 | `post_epoch(epoch, tick, hash)` | operator | `epoch == last_epoch + 1`, `tick > last_epoch_tick` |
 | `register_birth(id, parent_id, generation, birth_tick, genome_hash, uri)` | operator (pays rent) | `id == next_id`; WILD; creates the Core asset (`asset` is a fresh keypair signer) owned by the World PDA; not in wind-down |
-| `open_offer(id, price)` | operator | WILD, or OWNED with the asset back in the World PDA's hands (a keeper sent it to the dish natively), to OFFERED; clears any listing; not in wind-down |
+| `open_offer(id, price)` | operator | WILD, or OWNED with the asset back in the World PDA's hands (a keeper sent it to the cage natively), to OFFERED; clears any listing; not in wind-down |
 | `buy(id, price)` | buyer | OFFERED and the asset still the World PDA's; `price` must equal `sale_price`; the `parent` account is required whenever `parent_id` is set; 60% vault, 15% metabolism, 15% pool, 10% to the parent's vault if the parent is OWNED, else pool; the asset moves to the buyer, OWNED; not in wind-down |
 | `list(id, price)` | keeper | OWNED and no pending cull; price > 0; records `listed_by` and `listed_at` |
 | `unlist(id)` | keeper or `listed_by` | clears the listing |
-| `buy_listed(id, price)` | buyer | `sale_price > 0`, the asset still `listed_by`'s and the listing younger than LISTING_MAX_AGE, else NotForSale; 90% to `listed_by`'s credit (`seller_credit`, derived from the record), 5% metabolism, 5% pool; the vault travels with the larva; the asset moves to the buyer through the transfer delegate; refused for a pending cull and in wind-down |
+| `buy_listed(id, price)` | buyer | `sale_price > 0`, the asset still `listed_by`'s and the listing younger than LISTING_MAX_AGE, else NotForSale; 90% to `listed_by`'s credit (`seller_credit`, derived from the record), 5% metabolism, 5% pool; the vault travels with the fly; the asset moves to the buyer through the transfer delegate; refused for a pending cull and in wind-down |
 | `reward_many(amounts)` | operator | creatures in `remaining_accounts`, one per amount; pool to vaults; DEAD skipped; not in wind-down |
-| `settle_death(id, cause, tick, heir_count)` | operator | first `heir_count` of `remaining_accounts` are heirs (must be alive). Cause 6 with `pending_cull`: 85% keeper credit, 15% metabolism. Otherwise 40% heirs in equal shares (dust to pool; no heirs: to metabolism), 35% metabolism, 15% pool, 10% keeper credit (no keeper: metabolism). `keeper_credit` is an optional account, required when the larva has a keeper; burns the asset. An asset the keeper already burned natively is accepted: no keeper, `keeper_credit` absent, nothing burned. A larva already DEAD fails WrongStatus |
+| `settle_death(id, cause, tick, heir_count)` | operator | first `heir_count` of `remaining_accounts` are heirs (must be alive). Cause 6 with `pending_cull`: 85% keeper credit, 15% metabolism. Otherwise 40% heirs in equal shares (dust to pool; no heirs: to metabolism), 35% metabolism, 15% pool, 10% keeper credit (no keeper: metabolism). `keeper_credit` is an optional account, required when the fly has a keeper; burns the asset. An asset the keeper already burned natively is accepted: no keeper, `keeper_credit` absent, nothing burned. A fly already DEAD fails WrongStatus |
 | `request_cull(id)` | keeper | OWNED; clears the listing, freezes the asset, starts CULL_TIMEOUT |
 | `force_settle_cull(id)` | anyone | after CULL_TIMEOUT: 85% keeper credit, 15% metabolism; burns the asset |
 | `withdraw()` | credit owner | credit to owner's account |
 | `withdraw_treasury(m, p)` | operator | to any account; `u64::MAX` takes the whole pot, 0 takes none of it |
 | `fund(amount, pool_bps)` | anyone | `pool_bps` to pool, the rest to metabolism; not in wind-down |
 | `begin_wind_down()` | operator, or anyone after ABANDONED_AFTER | one-way |
-| `reclaim_vault(id)` | keeper | wind-down: vault to credit, asset burned, larva DEAD |
+| `reclaim_vault(id)` | keeper | wind-down: vault to credit, asset burned, fly DEAD |
 | `sweep_to_recovery()` | anyone | wind-down: metabolism + pool to `recovery` |
 | `escheat()` | anyone | wind-down + ESCHEAT_AFTER: everything above rent to `recovery`; ledger zeroed, later claims fail Insolvent |
 | `close_record(id)` | anyone | escheated: closes the Creature PDA to `recovery`, any status; the asset is untouched; `closed_records += 1` |
@@ -241,13 +241,13 @@ Errors: `NotOperator`, `NotOwner`, `WrongStatus`, `WrongId`, `NotForSale`,
 ## The end of the world
 
 `escheat` empties the ledger; what is left on chain afterwards is rent: one
-`Creature` per larva ever born, one `Credit` per address ever owed
+`Creature` per fly ever born, one `Credit` per address ever owed
 something, and the `World` itself. Three permissionless instructions return
 it, all to `recovery` and all only once `world.escheated` is set (before
 that the records back money and closing one is refused with `NotEscheated`):
 
 1. `close_record(id)` for every id below `next_id`, in any order and any
-   status. The Core asset is not touched: a kept larva's asset stays with
+   status. The Core asset is not touched: a kept fly's asset stays with
    its keeper as a collectible, a dead one's is already a burned stub.
    `closed_records` counts them.
 2. `close_credit()` for every `Credit` account (found by program-account
@@ -313,18 +313,18 @@ The provider wallet is `.keys/operator.json`, created by
 The suite covers, in the order of one world's life: the collection at init,
 a birth minting the asset to the World PDA with its attributes, primary sale
 splits and the asset moving to the buyer, price protection, resale through
-the transfer delegate and the travelling vault, an unlisted larva not for
+the transfer delegate and the travelling vault, an unlisted fly not for
 sale, withdraw, the ancestry royalty (live, dead and wrong parent), batched
 rewards that skip the dead, inheritance with dust and the burn, wild deaths
 burned from the World PDA, culls (requested, with the freeze, and not), a
 native Core transfer voiding the old listing and making the new owner the
 keeper, a keeper's native burn settling with no keeper share, a listing
-expiring after LISTING_MAX_AGE, a larva sent back to the dish re-offered and
+expiring after LISTING_MAX_AGE, a fly sent back to the cage re-offered and
 bought again, epoch monotonicity, operator-only access, treasury withdrawal
 and funding, operator hand-over, recovery address rules, a stranger failing
 to wind down a running world, self-service culls after the timeout, the
 heartbeat keeping a world alive, a keeper recovering (and burning) their
-larva with the operator gone forever, treasuries reaching only the recovery
+fly with the operator gone forever, treasuries reaching only the recovery
 address, the world emptying to exactly the one vault nobody reclaimed, that
 vault escheating after the timer, every record staying readable, and then
 the end of the world: nothing closes before escheat, every record (the

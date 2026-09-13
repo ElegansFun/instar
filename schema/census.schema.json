@@ -1,18 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/instar-world/instar/schema/census.schema.json",
-  "title": "Census Canonical Connectome Format (CCF) v0.1",
+  "title": "Census Canonical Connectome Format (CCF) v0.2 header",
+  "description": "The split-layout header data/canonical/<dataset_id>.census.json. Node records live in <dataset_id>.nodes.json (see $defs.node), the edge table in the CBG0 blob (docs/SCHEMA.md).",
   "type": "object",
-  "required": ["census_format", "dataset", "nodes", "edges", "provenance", "merkle"],
+  "required": ["census_format", "dataset", "provenance", "files", "node_count", "edge_count", "merkle"],
   "additionalProperties": false,
   "properties": {
-    "census_format": { "const": "0.1.0" },
+    "census_format": { "const": "0.2.0" },
     "dataset": {
       "type": "object",
       "required": ["id", "species", "common_name", "variant", "dataset_name", "dataset_version", "modality", "citation", "license", "source_urls"],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "id": { "type": "string", "pattern": "^[a-z0-9]+([-.][a-z0-9]+)*$" },
         "species": { "type": "string", "minLength": 1 },
         "common_name": { "type": "string", "minLength": 1 },
         "variant": { "type": "string", "minLength": 1 },
@@ -22,40 +23,6 @@
         "citation": { "type": "string", "minLength": 1 },
         "license": { "type": "string", "minLength": 1 },
         "source_urls": { "type": "array", "minItems": 1, "items": { "type": "string", "format": "uri" } }
-      }
-    },
-    "nodes": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["id", "kind", "source_type", "cell_class", "side", "category", "neurotransmitter"],
-        "additionalProperties": false,
-        "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "kind": { "enum": ["neuron", "muscle", "glia", "epithelial", "gland", "end_organ", "other"] },
-          "source_type": { "type": ["string", "null"] },
-          "cell_class": { "type": ["string", "null"] },
-          "side": { "enum": ["L", "R", null] },
-          "category": { "type": ["string", "null"], "minLength": 1 },
-          "neurotransmitter": { "type": ["string", "null"] }
-        }
-      }
-    },
-    "edges": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["pre", "post", "kind", "weight", "polarity"],
-        "additionalProperties": false,
-        "properties": {
-          "pre": { "type": "string", "minLength": 1 },
-          "post": { "type": "string", "minLength": 1 },
-          "kind": { "enum": ["chemical", "gap_junction"] },
-          "weight": { "type": "integer", "minimum": 1 },
-          "polarity": { "enum": ["excitatory", "inhibitory", null] }
-        }
       }
     },
     "provenance": {
@@ -69,11 +36,12 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["filename", "sha256", "url", "role"],
+            "required": ["filename", "sha256", "size", "url", "role"],
             "additionalProperties": false,
             "properties": {
               "filename": { "type": "string" },
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "size": { "type": "integer", "minimum": 1 },
               "url": { "type": "string" },
               "role": { "type": "string" }
             }
@@ -82,6 +50,17 @@
         "notes": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "files": {
+      "type": "object",
+      "required": ["graph", "nodes"],
+      "additionalProperties": false,
+      "properties": {
+        "graph": { "type": "string", "pattern": "\\.cbg$" },
+        "nodes": { "type": "string", "pattern": "\\.nodes\\.json$" }
+      }
+    },
+    "node_count": { "type": "integer", "minimum": 1 },
+    "edge_count": { "type": "integer", "minimum": 1 },
     "merkle": {
       "type": "object",
       "required": ["algorithm", "leaf_order", "leaf_count", "root_sha256"],
@@ -92,7 +71,33 @@
         "leaf_count": { "type": "integer", "minimum": 3 },
         "root_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
+    }
+  },
+  "$defs": {
+    "node": {
+      "description": "One row of <dataset_id>.nodes.json `nodes`; row i is node index i of the CBG0 edge table.",
+      "type": "object",
+      "required": ["id", "kind", "source_type", "side", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "pattern": "^[ -!#-\\[\\]-~]+$" },
+        "kind": { "enum": ["neuron", "muscle", "glia", "epithelial", "gland", "end_organ", "other"] },
+        "source_type": { "type": ["string", "null"], "minLength": 1 },
+        "side": { "enum": ["L", "R", "M", null] },
+        "category": { "type": ["string", "null"], "minLength": 1 }
+      }
     },
-    "annotations": { "type": "object" }
+    "edge": {
+      "description": "Edge record as hashed (the CBG0 edge table stores node indices instead of ids).",
+      "type": "object",
+      "required": ["pre", "post", "kind", "weight"],
+      "additionalProperties": false,
+      "properties": {
+        "pre": { "type": "string", "minLength": 1 },
+        "post": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["chemical", "gap_junction"] },
+        "weight": { "type": "integer", "minimum": 1 }
+      }
+    }
   }
 }

@@ -56,7 +56,7 @@ if (w.windDown) {
   console.log(`wind-down:         not begun; abandonment opens ${when(w.lastOperatorAction + ABANDONED_AFTER_S)} without a heartbeat`);
 }
 console.log("");
-console.log(`larvae:            ${w.nextId} born, ${w.totalAlive} alive, epoch ${w.lastEpoch} at tick ${w.lastEpochTick}`);
+console.log(`flies:             ${w.nextId} born, ${w.totalAlive} alive, epoch ${w.lastEpoch} at tick ${w.lastEpochTick}`);
 console.log(`metabolism:        ${formatSol(w.metabolism)}`);
 console.log(`pool:              ${formatSol(w.pool)}`);
 console.log(`vaults (total):    ${formatSol(w.totalVaults)}`);

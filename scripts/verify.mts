@@ -6,7 +6,7 @@
 //
 // Env: INSTAR_CLUSTER (default localnet), INSTAR_RPC, INSTAR_OPERATOR_KEYPAIR
 // (default .keys/operator.json). The World is initialised here with this
-// operator; it must not already hold larvae. The World PDA is a singleton per
+// operator; it must not already hold flies. The World PDA is a singleton per
 // program, so running this beside the live world process would register
 // births and epochs that world never produced and break its identity check —
 // the script refuses rather than risk it. Keepers are throwaway keypairs
@@ -15,7 +15,7 @@
 // Every flow asserts the exact lamport split from the contract and the
 // solvency invariant afterwards:
 //   world.lamports - rent >= metabolism + pool + sum(vault) + sum(credit)
-// and, since every larva is a Metaplex Core asset, what the asset says:
+// and, since every fly is a Metaplex Core asset, what the asset says:
 // owner after every trade, the stale listing after a native transfer,
 // freeze on cull, burn on death.
 
@@ -73,7 +73,7 @@ if (!(await chain.worldExists())) {
   ok(`init_world ${sig.slice(0, 12)}`);
 } else if ((await chain.world()).nextId > 0) {
   console.error(
-    `the World at ${chain.rpcShown} already holds larvae — it belongs to a running world process.\n` +
+    `the World at ${chain.rpcShown} already holds flies — it belongs to a running world process.\n` +
     `verify needs a scratch validator: npm run localnet -- 8999, then INSTAR_RPC=http://127.0.0.1:8999 npm run verify`
   );
   process.exit(2);
@@ -88,7 +88,7 @@ console.log(`world ${chain.worldPda.toBase58()}  rent ${formatSol(rentWorld)} SO
 const assetOf = async (id: number) => {
   const c = (await chain.creature(id))!;
   const a = await chain.asset(c.asset);
-  assert.ok(a, `larva ${id}: asset ${c.asset.toBase58()} is missing`);
+  assert.ok(a, `fly ${id}: asset ${c.asset.toBase58()} is missing`);
   return a;
 };
 
@@ -103,7 +103,7 @@ let w = await solvent("start");
 const id = w.nextId;
 const tick = 1000;
 const hashA = hash32(0x1111222233334444n);
-const uriA = `http://localhost:8787/api/larva/${id}.json`;
+const uriA = `http://localhost:8787/api/fly/${id}.json`;
 await chain.registerBirth(id, -1, 0, tick, hashA, uriA);
 let c = (await chain.creature(id))!;
 assert.equal(c.status, STATUS.WILD); assert.equal(c.parentId, -1); assert.equal(c.genomeHash.slice(-16), "1111222233334444");
@@ -111,7 +111,7 @@ assert.equal((await chain.world()).nextId, id + 1);
 ok(`register_birth ${id} -> WILD, next_id ${id + 1}`);
 
 let a = await assetOf(id);
-assert.ok(a.owner.equals(chain.worldPda), "a wild larva's asset is owned by the World PDA");
+assert.ok(a.owner.equals(chain.worldPda), "a wild fly's asset is owned by the World PDA");
 assert.ok(c.keeper.equals(chain.worldPda), "creature view joins the asset owner");
 assert.ok(a.collection?.equals(collection), "the asset is in the world's collection");
 assert.equal(a.name, `Instar #${id}`); assert.equal(a.uri, uriA); assert.equal(a.frozen, false);
@@ -148,7 +148,7 @@ ok(`buy: 60% vault / 15% metabolism / 25% pool (no parent) — world +${formatSo
 
 // ---- a child of an OWNED parent: 10% to the parent's vault ------------------
 const child = w.nextId;
-await chain.registerBirth(child, id, 1, tick + 10, hash32(0x5555n), `http://localhost:8787/api/larva/${child}.json`);
+await chain.registerBirth(child, id, 1, tick + 10, hash32(0x5555n), `http://localhost:8787/api/fly/${child}.json`);
 const price2 = SOL / 50n;
 await chain.openOffer(child, price2);
 before = await chain.world();
@@ -289,23 +289,23 @@ assert.equal(w.metabolism - before.metabolism, cullEstate - bps(cullEstate, 8500
 assert.equal(await chain.asset(c.asset), null, "the cull settlement burns the asset");
 ok("request_cull freezes the asset (transfer refused, list -> WrongStatus); settle_death(culled): 85% keeper credit, asset burned");
 
-// ---- an unsold larva dies: no keeper, no credit account ----------------------------
+// ---- an unsold fly dies: no keeper, no credit account ----------------------------
 const wild = w.nextId;
-await chain.registerBirth(wild, -1, 0, tick + 20, hash32(0x7777n), `http://localhost:8787/api/larva/${wild}.json`);
+await chain.registerBirth(wild, -1, 0, tick + 20, hash32(0x7777n), `http://localhost:8787/api/fly/${wild}.json`);
 const wildAsset = (await chain.creature(wild))!.asset;
 await chain.settleDeath(wild, 2, tick + 4100, []);
 w = await solvent("settle_death (wild)");
 assert.equal((await chain.creature(wild))!.status, STATUS.DEAD);
 assert.equal(await chain.asset(wildAsset), null);
-ok("settle_death of a WILD larva: no keeper credit passed, asset burned");
+ok("settle_death of a WILD fly: no keeper credit passed, asset burned");
 
-// ---- the owner burns the asset natively, then the larva dies ------------------
+// ---- the owner burns the asset natively, then the fly dies ------------------
 // Core lets an owner burn an unfrozen asset from any wallet; the program is
 // not told and the record stays OWNED. The death must still settle: no
 // keeper (the share goes to metabolism), no credit account passed, nothing
 // left to burn.
 const burnt = w.nextId;
-await chain.registerBirth(burnt, -1, 0, tick + 30, hash32(0x8888n), `http://localhost:8787/api/larva/${burnt}.json`);
+await chain.registerBirth(burnt, -1, 0, tick + 30, hash32(0x8888n), `http://localhost:8787/api/fly/${burnt}.json`);
 await chain.openOffer(burnt, price);
 await A.buy(burnt, price);
 const burntAsset = (await chain.creature(burnt))!.asset;
@@ -327,12 +327,12 @@ assert.equal(await chain.creditOf(alice.publicKey), aliceCreditBefore, "no keepe
 assert.equal(w.totalAlive, before.totalAlive - 1);
 ok("settle_death after the owner's native BurnV1: no keeper credit, 85% metabolism / 15% pool, record DEAD");
 
-// ---- a larva sent back to the dish natively is re-offered ---------------------
+// ---- a fly sent back to the cage natively is re-offered ---------------------
 // A keeper can transfer their asset to the World PDA from any wallet; the
 // record stays OWNED with nobody able to sign for it. open_offer takes it
 // back onto the market (the program checks the asset's owner is the World).
 const donated = w.nextId;
-await chain.registerBirth(donated, -1, 0, tick + 40, hash32(0x9999n), `http://localhost:8787/api/larva/${donated}.json`);
+await chain.registerBirth(donated, -1, 0, tick + 40, hash32(0x9999n), `http://localhost:8787/api/fly/${donated}.json`);
 await chain.openOffer(donated, price);
 await A.buy(donated, price);
 await A.list(donated, ask);
@@ -348,7 +348,7 @@ await B.buy(donated, price);
 c = (await chain.creature(donated))!;
 assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(bob.publicKey));
 await assert.rejects(chain.openOffer(donated, price), (e: any) => e instanceof ProgramError && e.name === "WrongStatus");
-ok("a larva sent to the World PDA natively: buy -> NotForSale until open_offer re-offers it (listing cleared); then bought; re-offering a kept larva -> WrongStatus");
+ok("a fly sent to the World PDA natively: buy -> NotForSale until open_offer re-offers it (listing cleared); then bought; re-offering a kept fly -> WrongStatus");
 
 // ---- fund + sendSol ----------------------------------------------------------
 before = await chain.world();
@@ -393,7 +393,7 @@ if (shortTimers) {
   const open = await chain.openRecords({ from: 0, to: w.nextId });
   assert.equal(open.length, w.nextId, "every record is still readable");
   c = (await chain.creature(donated))!;
-  assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(bob.publicKey), "a larva a keeper still holds closes like any other");
+  assert.equal(c.status, STATUS.OWNED); assert.ok(c.keeper.equals(bob.publicKey), "a fly a keeper still holds closes like any other");
   const keptAsset = c.asset;
   const rentRecords = open.reduce((a, r) => a + r.lamports, 0n);
   recBefore = await chain.balance(recovery);
@@ -401,8 +401,8 @@ if (shortTimers) {
   assert.equal((await chain.balance(recovery)) - recBefore, rentRecords, "recovery gains exactly the closed records' rent");
   assert.equal(await chain.creature(donated), null);
   assert.equal((await chain.openRecords({ from: 0, to: w.nextId })).length, 0);
-  assert.ok((await chain.asset(keptAsset))?.owner.equals(bob.publicKey), "the kept larva's asset stays its owner's");
-  ok(`close_record x ${open.length} (${Math.ceil(open.length / CLOSE_BATCH)} tx): ${formatSol(rentRecords)} SOL of rent to recovery; the OWNED larva's NFT stays with its keeper`);
+  assert.ok((await chain.asset(keptAsset))?.owner.equals(bob.publicKey), "the kept fly's asset stays its owner's");
+  ok(`close_record x ${open.length} (${Math.ceil(open.length / CLOSE_BATCH)} tx): ${formatSol(rentRecords)} SOL of rent to recovery; the OWNED fly's NFT stays with its keeper`);
 
   const credits = await chain.listCreditOwners();
   assert.ok(credits.some(x => x.owner.equals(alice.publicKey)) && credits.some(x => x.owner.equals(bob.publicKey)), "both keepers' credit accounts are listed");

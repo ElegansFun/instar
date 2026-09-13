@@ -109,7 +109,7 @@ export class Accounts {
     if (v) return v;
     throw new Error(
       "accounts.json and its backup are both unreadable. Starting with an empty set would mint new " +
-      "wallets over real keepers' existing ones and orphan their larvae and balances. Restore the file."
+      "wallets over real keepers' existing ones and orphan their flies and balances. Restore the file."
     );
   }
 

@@ -14,7 +14,7 @@
 //   transfer-operator <pubkey>               names the key that may accept
 //   accept-operator [keypair.json]           signed by the pending key (default: the
 //                                            operator keypair, i.e. the new operator's)
-//   re-offer <id> <lamports>                 open_offer on a larva sent back to the dish
+//   re-offer <id> <lamports>                 open_offer on a fly sent back to the cage
 //   force-settle-cull <id>                   after CULL_TIMEOUT; anyone may
 //   begin-wind-down                          ONE-WAY; the operator, or anyone after
 //                                            ABANDONED_AFTER
@@ -26,7 +26,7 @@
 //                                            print the program-close command. Does what the
 //                                            chain allows NOW and dates the rest
 //   sweep-custodial --to <recovery> [--nfts] after escheat only: every custodial wallet's SOL
-//                                            (and with --nfts its larvae) to recovery
+//                                            (and with --nfts its flies) to recovery
 //   rotate-master-key <master.key>           re-seal DATA_DIR/accounts.json under the key in
 //                                            that file (npm run keys:new); world stopped
 //
@@ -102,9 +102,9 @@ const lamports = (s: string | undefined, what: string) => {
   if (!/^\d+$/.test(s ?? "")) throw new Error(`${what}: whole lamports, not ${JSON.stringify(s)}`);
   return BigInt(s!);
 };
-const larvaId = (s: string | undefined) => {
+const flyId = (s: string | undefined) => {
   const id = Number(s);
-  if (!Number.isInteger(id) || id < 0) throw new Error(`id: a larva number, not ${JSON.stringify(s)}`);
+  if (!Number.isInteger(id) || id < 0) throw new Error(`id: a fly number, not ${JSON.stringify(s)}`);
   return id;
 };
 
@@ -186,12 +186,12 @@ async function status(chain: Chain, operator: Keypair) {
   }
 }
 
-/// A larva as the CLI needs to describe it before acting on it.
+/// A fly as the CLI needs to describe it before acting on it.
 async function describe(chain: Chain, id: number) {
   const c = await chain.creature(id);
-  if (!c) throw new Error(`larva ${id} was never registered (next id is ${(await chain.world()).nextId})`);
-  const where = c.keeper.equals(chain.worldPda) ? "the dish (World PDA)" : c.keeper.equals(PublicKey.default) ? "nobody (asset burned)" : c.keeper.toBase58();
-  return { c, line: `larva ${id}: ${STATUS_NAME[c.status]}, gen ${c.generation}, asset ${c.asset.toBase58()}, held by ${where}, vault ${formatSol(c.vault)} SOL, price ${formatSol(c.salePrice)} SOL${c.pendingCull ? `, cull requested ${when(c.cullRequestedAt)}` : ""}` };
+  if (!c) throw new Error(`fly ${id} was never registered (next id is ${(await chain.world()).nextId})`);
+  const where = c.keeper.equals(chain.worldPda) ? "the cage (World PDA)" : c.keeper.equals(PublicKey.default) ? "nobody (asset burned)" : c.keeper.toBase58();
+  return { c, line: `fly ${id}: ${STATUS_NAME[c.status]}, gen ${c.generation}, asset ${c.asset.toBase58()}, held by ${where}, vault ${formatSol(c.vault)} SOL, price ${formatSol(c.salePrice)} SOL${c.pendingCull ? `, cull requested ${when(c.cullRequestedAt)}` : ""}` };
 }
 
 /// A destination for money that can never come back: a mistyped address is
@@ -376,7 +376,7 @@ async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
     const credits = await chain.listCreditOwners();
     // custodial wallets: their SOL is swept by sweep-custodial, which needs
     // the World's `escheated` flag, so the World cannot close over them; and
-    // their larvae are only findable through the records, so say so now
+    // their flies are only findable through the records, so say so now
     if (fs.existsSync(accountsFile())) {
       const held = await custodialHoldings(chain);
       const unreadable = held.filter(h => !h.keypair).length;
@@ -385,10 +385,10 @@ async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
       const kept = open.length ? (await chain.creatures({ from: 0, to: w.nextId })).filter(c => c.status !== STATUS.DEAD && wallets.has(c.keeper.toBase58())) : [];
       if (total > 0n || unreadable) {
         line("4", "close records", `REFUSED: ${accountsFile()} holds ${held.length} custodial wallet(s) with ${sol(total)}${unreadable ? ` and ${unreadable} this master key cannot open` : ""}`);
-        note(`run sweep-custodial --to ${to.toBase58()}${kept.length ? ` --nfts (${kept.length} larva(e) are kept there)` : ""} first: it needs the World's escheated flag, and the World closes here`);
+        note(`run sweep-custodial --to ${to.toBase58()}${kept.length ? ` --nfts (${kept.length} fly/flies are kept there)` : ""} first: it needs the World's escheated flag, and the World closes here`);
         return done();
       }
-      note(`custodial wallets in ${accountsFile()}: ${held.length}, all empty${kept.length ? `; ${kept.length} larva(e) kept there stay collectibles unless sweep-custodial --nfts moves them before the records close` : ""}`);
+      note(`custodial wallets in ${accountsFile()}: ${held.length}, all empty${kept.length ? `; ${kept.length} fly/flies kept there stay collectibles unless sweep-custodial --nfts moves them before the records close` : ""}`);
     } else note(`no ${accountsFile()}: if this world had custodial wallets, sweep-custodial needs the World and must run before this`);
 
     if (!open.length) line("4", "close_record", `done: ${w.closedRecords} of ${w.nextId}`);
@@ -471,7 +471,7 @@ async function recoverAll(chain: Chain, operator: Keypair, to: PublicKey) {
 }
 
 /// After escheat: every custodial wallet's SOL (and, with --nfts, its
-/// larvae) to the recovery address, the operator paying every fee so each
+/// flies) to the recovery address, the operator paying every fee so each
 /// wallet ends at exactly zero. The same 180-day rule the program applies to
 /// vaults and credits, and disclosed the same way (site, ECONOMY.md).
 async function sweepCustodial(chain: Chain, operator: Keypair, w: WorldView, to: PublicKey) {
@@ -484,25 +484,25 @@ async function sweepCustodial(chain: Chain, operator: Keypair, w: WorldView, to:
   const held = await custodialHoldings(chain);
   const wallets = new Map(held.filter(h => h.keypair).map(h => [h.keypair!.publicKey.toBase58(), h]));
   const kept = nfts ? (await chain.creatures({ from: 0, to: w.nextId })).filter(c => c.status !== STATUS.DEAD && wallets.has(c.keeper.toBase58())) : [];
-  const larvaeOf = (h: Holding) => kept.filter(c => h.keypair && c.keeper.equals(h.keypair.publicKey));
+  const fliesOf = (h: Holding) => kept.filter(c => h.keypair && c.keeper.equals(h.keypair.publicKey));
   console.log(`sweep-custodial on ${cluster} (${chain.rpcShown}): ${held.length} wallet(s) in ${accountsFile()} -> ${to.toBase58()}`);
   console.log(`fees paid by ${operator.publicKey.toBase58()} (${formatSol(await chain.balance(operator.publicKey))} SOL)\n`);
   let total = 0n;
   for (const h of held) {
     const who = h.user.padEnd(26);
     if (!h.keypair) { console.log(`  ${who} cannot be opened under this master key — skipped`); continue; }
-    const mine = larvaeOf(h);
-    console.log(`  ${who} ${h.keypair.publicKey.toBase58()}  ${formatSol(h.balance)} SOL${mine.length ? `  larvae ${mine.map(c => c.id).join(", ")}` : ""}`);
+    const mine = fliesOf(h);
+    console.log(`  ${who} ${h.keypair.publicKey.toBase58()}  ${formatSol(h.balance)} SOL${mine.length ? `  flies ${mine.map(c => c.id).join(", ")}` : ""}`);
     total += h.balance;
   }
-  console.log(`\n  total ${sol(total)}${nfts ? `, ${kept.length} larva(e)` : " (larvae stay where they are; --nfts moves them too)"}`);
+  console.log(`\n  total ${sol(total)}${nfts ? `, ${kept.length} fly/flies` : " (flies stay where they are; --nfts moves them too)"}`);
   if (!yes) { console.log("\nnothing sent — add --yes to send it"); process.exitCode = 2; return; }
   await assertEndpoint(chain);
   const before = await chain.balance(to);
   for (const h of held) {
     if (!h.keypair) continue;
     const keeper = chain.asKeeper(h.keypair);
-    for (const c of larvaeOf(h)) console.log(`  ${h.user}: larva ${c.id} -> recovery: ${await keeper.transferAsset(c.id, to, operator)}`);
+    for (const c of fliesOf(h)) console.log(`  ${h.user}: fly ${c.id} -> recovery: ${await keeper.transferAsset(c.id, to, operator)}`);
     if (h.balance > 0n) {
       const r = await chain.sendAll(h.keypair, to, 0n, operator);
       console.log(`  ${h.user}: ${sol(r.lamports)} -> recovery: ${r.signature ?? "already empty"}`);
@@ -606,16 +606,16 @@ async function main() {
     }
     case "re-offer": {
       asOperator();
-      const id = larvaId(args[0]), price = lamports(args[1], "lamports");
+      const id = flyId(args[0]), price = lamports(args[1], "lamports");
       if (price === 0n) throw new Error("re-offer: the price must be above zero");
       const { c, line } = await describe(chain, id);
       if (c.status !== STATUS.WILD && !(c.status === STATUS.OWNED && c.keeper.equals(chain.worldPda))) {
-        throw new Error(`${line}\nonly a WILD larva, or an OWNED one whose asset is back in the World PDA's hands, can be offered`);
+        throw new Error(`${line}\nonly a WILD fly, or an OWNED one whose asset is back in the World PDA's hands, can be offered`);
       }
       return act(chain, [line, `open_offer at ${sol(price)}${c.salePrice ? ` (clears the stale listing at ${formatSol(c.salePrice)} SOL)` : ""}`], () => chain.openOffer(id, price));
     }
     case "force-settle-cull": {
-      const id = larvaId(args[0]);
+      const id = flyId(args[0]);
       const { c, line } = await describe(chain, id);
       if (!c.pendingCull) throw new Error(`${line}\nno cull is pending; only the keeper can request one`);
       return act(chain, [line, `force_settle_cull: 85% of the vault to ${c.keeper.toBase58()}'s credit, 15% to metabolism, the asset burned`,

@@ -4,7 +4,7 @@
 // identity from the world, because the queue holds until it lands.
 //
 // The queue is part of the record: it is persisted in the journal so a
-// restart resumes it instead of skipping a larva id and wedging every birth
+// restart resumes it instead of skipping a fly id and wedging every birth
 // after it.
 
 import { Chain, ProgramError, STATUS, STATUS_NAME, formatSol } from "../chain/solana.mts";
@@ -25,7 +25,7 @@ export type OpQueueOpts = {
   engine: Engine;
   store: JournalStore;
   gasReserve: bigint;
-  /// origin of the larva metadata a birth writes into its NFT
+  /// origin of the fly metadata a birth writes into its NFT
   publicUrl: string;
   log: (line: string) => void;
   onEpochPosted: (epoch: number, op: Extract<Op, { op: "epoch" }>, sig: string | null) => void;
@@ -76,7 +76,7 @@ export class OpQueue {
     return this.ops.some(o => o.op === "birth" && o.uid === uid);
   }
 
-  /// A birth record rebuilt for an id the chain is missing. A living larva
+  /// A birth record rebuilt for an id the chain is missing. A living fly
   /// still has its real genome in a slot; one that has already died does not,
   /// and rather than invent a hash we record zero — the record is honest about
   /// being a reconstruction. The parent's generation is already on chain and
@@ -175,19 +175,19 @@ export class OpQueue {
     const chain = this.chain, store = this.store;
     if (op.op === "birth") {
       const sig = await chain.registerBirth(op.uid, op.parentUid, op.generation, op.tick, hash32(BigInt("0x" + op.genomeHash)),
-        `${this.publicUrl}/api/larva/${op.uid}.json`);
+        `${this.publicUrl}/api/fly/${op.uid}.json`);
       store.logTx("birth", sig, true, op.uid);
-      this.log(`larva ${op.uid} born on-chain (gen ${op.generation}, NFT minted)`);
+      this.log(`fly ${op.uid} born on-chain (gen ${op.generation}, NFT minted)`);
     } else if (op.op === "offer") {
       const sig = await chain.openOffer(op.uid, BigInt(op.price));
       store.logTx("offer", sig, true, op.uid);
-      this.log(`larva ${op.uid} offered at ${formatSol(BigInt(op.price))} SOL`);
+      this.log(`fly ${op.uid} offered at ${formatSol(BigInt(op.price))} SOL`);
     } else if (op.op === "death") {
       // the keeper's share is credited to whoever owns the asset now; an
-      // unsold larva is the dish's own and passes no credit account
+      // unsold fly is the cage's own and passes no credit account
       const sig = await chain.settleDeath(op.uid, op.cause, op.tick, op.heirs);
       store.logTx("death", sig, true, op.uid);
-      this.log(`death settled: larva ${op.uid} (cause ${op.cause}, ${op.heirs.length} heirs, NFT burned)`);
+      this.log(`death settled: fly ${op.uid} (cause ${op.cause}, ${op.heirs.length} heirs, NFT burned)`);
     } else if (op.op === "reward") {
       // A reward that was sent and not confirmed may still land: the pool
       // pays twice if it is sent again, so nothing goes out until the first
@@ -208,12 +208,12 @@ export class OpQueue {
       let uids = op.uids, amounts = op.amounts.map(BigInt);
       const want = amounts.reduce((a, b) => a + b, 0n);
       if (want > pool) {
-        if (pool === 0n) { this.log(`reward for ${uids.length} larvae dropped — the pool is empty`); return; }
+        if (pool === 0n) { this.log(`reward for ${uids.length} flies dropped — the pool is empty`); return; }
         amounts = amounts.map(a => (a * pool) / want);
         const keep = amounts.map((a, i) => [a, i] as const).filter(([a]) => a > 0n);
         uids = keep.map(([, i]) => uids[i]);
         amounts = keep.map(([a]) => a);
-        this.log(`reward scaled to fit the pool: ${formatSol(want)} -> ${formatSol(amounts.reduce((a, b) => a + b, 0n))} SOL across ${uids.length} larvae`);
+        this.log(`reward scaled to fit the pool: ${formatSol(want)} -> ${formatSol(amounts.reduce((a, b) => a + b, 0n))} SOL across ${uids.length} flies`);
         if (!uids.length) return;
       }
       const sig = await chain.rewardMany(uids, amounts);
@@ -231,7 +231,7 @@ export class OpQueue {
 
   /// Work that is already done, or can never be done, must not wedge the
   /// queue behind it. But a BIRTH may only be dropped once the chain actually
-  /// holds it: the id is the larva's identity, and skipping one that never
+  /// holds it: the id is the fly's identity, and skipping one that never
   /// landed puts the world permanently ahead of the program, so every later
   /// birth is rejected and the world cannot start at all. Ask the chain rather
   /// than trusting the shape of an error string.
@@ -242,9 +242,9 @@ export class OpQueue {
       this.ops.shift(); this.save();
       if (!this.windingDown) {
         this.windingDown = true;
-        this.log(`THE WORLD IS WINDING DOWN — the program refuses new life. Dropped ${op.op}${"uid" in op ? ` for larva ${op.uid}` : ""}; ` +
+        this.log(`THE WORLD IS WINDING DOWN — the program refuses new life. Dropped ${op.op}${"uid" in op ? ` for fly ${op.uid}` : ""}; ` +
           `no further births, offers or rewards will be queued. Deaths and epochs still settle.`);
-      } else this.log(`dropped ${op.op}${"uid" in op ? ` for larva ${op.uid}` : ""}: the world is winding down`);
+      } else this.log(`dropped ${op.op}${"uid" in op ? ` for fly ${op.uid}` : ""}: the world is winding down`);
       return;
     }
     if (op.op === "birth") {
@@ -276,8 +276,8 @@ export class OpQueue {
             { op: "reward", uids: op.uids.slice(0, h), amounts: op.amounts.slice(0, h) },
             { op: "reward", uids: op.uids.slice(h), amounts: op.amounts.slice(h) },
           );
-          this.log(`reward for ${op.uids.length} larvae was too large for one transaction — split into ${h} + ${op.uids.length - h}`);
-        } else this.log(`reward for larva ${op.uids[0]} dropped: it does not fit in a transaction`);
+          this.log(`reward for ${op.uids.length} flies was too large for one transaction — split into ${h} + ${op.uids.length - h}`);
+        } else this.log(`reward for fly ${op.uids[0]} dropped: it does not fit in a transaction`);
         this.save();
         return;
       }
@@ -309,12 +309,12 @@ export class OpQueue {
       // The program says the record is not in a state that can die. If the
       // chain already holds it DEAD the settlement landed (or an earlier
       // process settled it); anything else means the world and the record
-      // disagree about a living larva, and dropping the op would leave the
+      // disagree about a living fly, and dropping the op would leave the
       // record wrong forever, so the queue holds and says so.
       const c = await this.chain.creature(op.uid);
       if (c?.status === STATUS.DEAD) {
         this.ops.shift(); this.save();
-        this.log(`death of larva ${op.uid} was already settled on chain — retired from the queue`);
+        this.log(`death of fly ${op.uid} was already settled on chain — retired from the queue`);
       } else {
         this.log(`[instar] death of #${op.uid} refused with WrongStatus while the record is still alive on chain ` +
           `(status ${c ? STATUS_NAME[c.status] : "missing"}, keeper ${c?.keeper.toBase58() ?? "-"}) — holding the queue: ${msg}`);
@@ -327,7 +327,7 @@ export class OpQueue {
       (op.op === "reward" && name === "WrongStatus");
     if (terminal) {
       this.ops.shift(); this.save();
-      this.log(`dropped ${op.op}${"uid" in op ? ` for larva ${op.uid}` : ""} (${name}): it can no longer land`);
+      this.log(`dropped ${op.op}${"uid" in op ? ` for fly ${op.uid}` : ""} (${name}): it can no longer land`);
       return;
     }
     this.log(`op ${op.op} failed${name ? ` (${name})` : ""}: ${msg}`);

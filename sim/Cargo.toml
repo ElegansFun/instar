@@ -2,7 +2,7 @@
 name = "instar_sim"
 version = "0.1.0"
 edition = "2021"
-description = "Deterministic world engine for Instar: Drosophila first-instar larvae driven by the Winding 2023 larval connectome. Integer-only fixed-point math: same seed + same genomes = bit-identical world, in WASM and native alike."
+description = "Deterministic world engine for Instar: adult Drosophila flies in a lab cage, each driven by the Janelia MaleCNS v1.0 connectome (every neuron, every connection of five or more synapses). Integer-only fixed-point math: same seed + same genomes = bit-identical world, in WASM and native alike."
 
 # standalone crate (kept out of the Anchor workspace on purpose)
 [workspace]

@@ -1,4 +1,74 @@
 {
-  "items": [],
-  "note": "No measurement has been taken for this build of the adult engine. scripts/sim-gates.mjs writes this file when it runs the gates (motor-neuron firings per fly-tick, feeding and flight with the real genome against a zeroed one, persistence of the real line, ms per tick at 40 flies); until then the figure stays hidden rather than showing a number that was never measured."
+  "measured_at": "2026-09-13T22:35:05.723Z",
+  "wasm_bytes": 146372,
+  "items": [
+    {
+      "label": "leg motor-neuron spikes per fly-tick",
+      "value": "26.397",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "wing motor-neuron spikes per fly-tick",
+      "value": "8.523",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "proboscis motor-neuron spikes per fly-tick",
+      "value": "0.675",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "fly-ticks feeding, real connectome vs every synapse zeroed",
+      "value": "9.01 vs 0.00",
+      "unit": "%",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "takeoffs per fly-hour at 10 ticks/s, real vs zeroed",
+      "value": "97.2 vs 0",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "zeroed-synapse line extinct at tick",
+      "value": "4,000",
+      "horizon": "8,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "population at the horizon, real connectome vs every synapse zeroed",
+      "value": "7 vs 0",
+      "unit": "flies",
+      "horizon": "12,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "walking fly-ticks with leg motor-neuron output, real vs zeroed",
+      "value": "88.6 vs 0.0",
+      "unit": "%",
+      "horizon": "12,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "fly-ticks on a food dish, real vs zeroed (dishes are this share of the floor)",
+      "value": "1.38 vs 0.00 (2.17)",
+      "unit": "%",
+      "horizon": "12,000 ticks, 8 founders, seed INSTA"
+    },
+    {
+      "label": "engine time per tick at 40 flies (the world runs 10 ticks/s)",
+      "value": "112.5",
+      "unit": "ms",
+      "horizon": "400 ticks at 40 flies, wasm on Node, Intel(R) Core(TM) i7-14700K"
+    },
+    {
+      "label": "engine time per fly-tick; the world caps its population at floor(80 ms / this)",
+      "value": "2.81 (28 flies)",
+      "unit": "ms",
+      "horizon": "400 ticks at 40 flies, wasm on Node, Intel(R) Core(TM) i7-14700K"
+    },
+    {
+      "label": "engine memory at 40 flies (genomes, wiring, per-fly neural state)",
+      "value": "641",
+      "unit": "MB",
+      "horizon": "400 ticks at 40 flies, wasm on Node, Intel(R) Core(TM) i7-14700K"
+    }
+  ],
+  "note": "Measured by scripts/sim-gates.mjs on 2026-09-13 against the checked-in engine (site/instar_sim.wasm, 146,372 bytes) and the canonical MaleCNS census, genesis genome, seed INSTA. Fly-hours are at the world's 10 ticks per second. \"Zeroed\" is the same world with every synaptic weight set to zero: what the body does on its own."
 }

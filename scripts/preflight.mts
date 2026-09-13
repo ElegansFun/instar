@@ -37,7 +37,7 @@ else {
   else bad(`artifact was built with features "${features}"; npm run program:build`);
 }
 // The suite and localnet validators preload Core from this dump; without it
-// no larva can be minted off a public cluster.
+// no fly can be minted off a public cluster.
 const coreSo = path.join(root, "program/deps/mpl_core.so");
 if (fs.existsSync(coreSo)) ok(`program/deps/mpl_core.so (${(fs.statSync(coreSo).size / 1024).toFixed(0)} KB) for local validators`);
 else bad("program/deps/mpl_core.so missing: solana program dump -u m CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d program/deps/mpl_core.so");
@@ -108,7 +108,7 @@ try {
   if (known[cluster] && hash !== known[cluster]) bad(`rpc genesis hash ${hash} is not ${cluster}`);
   else ok(`genesis hash confirms ${cluster}`);
 
-  // Every larva is a Metaplex Core asset, so the Core program must be on the
+  // Every fly is a Metaplex Core asset, so the Core program must be on the
   // target cluster (it is, on devnet and mainnet; localnet preloads it).
   const core = await chain.connection.getAccountInfo(MPL_CORE);
   if (core?.executable) ok(`Metaplex Core is deployed at ${MPL_CORE.toBase58()}`);
@@ -177,7 +177,7 @@ try {
 // ---- the engine and the site ------------------------------------------------------
 const wasm = path.join(root, "site/instar_sim.wasm");
 if (fs.existsSync(wasm)) ok(`engine site/instar_sim.wasm (${fs.statSync(wasm).size} bytes)`); else bad("site/instar_sim.wasm missing: npm run sim:build");
-for (const f of ["site/index.html", "site/dish.html", "site/measurements.json", "data/canonical/droso-winding2023-larva.census.json", "services/chain/idl/instar.ts"]) {
+for (const f of ["site/index.html", "site/cage.html", "data/canonical/male-cns-v1.0.census.cbg", "data/canonical/male-cns-v1.0.nodes.json", "data/canonical/male-cns-v1.0.census.json", "services/chain/idl/instar.ts"]) {
   if (fs.existsSync(path.join(root, f))) ok(f); else bad(`${f} missing`);
 }
 try {

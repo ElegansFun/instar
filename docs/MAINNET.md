@@ -1,7 +1,7 @@
 # Going live
 
 Instar on Solana mainnet-beta, with `$INSTAR` launched separately and its
-creator earnings fed into the dish.
+creator earnings fed into the cage.
 
 ## 0. The rule this document exists to enforce
 
@@ -18,8 +18,8 @@ What that buys, in the deployed program, from the first slot:
 
 | balance | who can get it out | needs the operator? |
 |---|---|---|
-| a larva's vault | its keeper, via `reclaim_vault` in wind-down | no |
-| a larva's vault, cull ignored | anyone, via `force_settle_cull` after 7 days | no |
+| a fly's vault | its keeper, via `reclaim_vault` in wind-down | no |
+| a fly's vault, cull ignored | anyone, via `force_settle_cull` after 7 days | no |
 | your credit | you, via `withdraw`, always | no |
 | metabolism + pool | `withdraw_treasury` while running; `sweep_to_recovery` after | no |
 | anything nobody claims | `escheat` to recovery, 180 days after wind-down | no |
@@ -76,7 +76,8 @@ role maps. It sends nothing. Every line must read `ok` or `next`.
 - [ ] `npm run sim:build` passes its gates on the engine you are about to ship
 - [ ] `npm run program:test`: 40 passing, including both recovery drills and the closing of every account
 - [ ] `npm run verify` against a scratch validator, `npm run journey` against a local world
-- [ ] a devnet rehearsal (below) has run for at least a day with epochs verifying from a browser
+- [ ] a devnet rehearsal (below) has run for at least a day with `npm run verify:epoch` reporting VERIFIED
+- [ ] the host has at least 2 GB of RAM: the engine holds ~0.6 GB of WebAssembly memory at 40 flies and the snapshot copies it once more while compressing
 - [ ] `.keys/mainnet/` and `.keys/instar-program.json` are backed up offline
 - [ ] `npm run preflight` on mainnet-beta reports `ready`
 
@@ -97,8 +98,11 @@ INSTAR_CLUSTER=devnet npm run world
 INSTAR_URL=http://localhost:8787 npm run journey     # the airdrop route asks devnet's faucet
 ```
 
-Open http://localhost:8787 and watch epochs turn VERIFIED: the page reads the
-World account from `api.devnet.solana.com` itself. Leave it a day; a world that
+Open http://localhost:8787, and from another terminal run
+`INSTAR_URL=http://localhost:8787 npm run verify:epoch`: it replays the world
+to the next epoch boundary on your machine and compares with the World
+account it reads from `api.devnet.solana.com` itself (docs/OPERATIONS.md,
+"Memory, the snapshot, and the verifier"). Leave it a day; a world that
 survives its own restarts, a stale journal and a rate-limited RPC on devnet is
 the world you deploy.
 
@@ -146,17 +150,17 @@ volume (never bake them into the image):
 | `INSTAR_RPC` | a paid RPC endpoint; the public one rate-limits |
 | `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container |
 | `INSTAR_MASTER_KEY` | 32 random bytes as hex; encrypts custodial wallets at rest. REQUIRED on mainnet-beta: the world refuses to start without it (on localnet/devnet it defaults to a key derived from the operator key, which would lock every keeper out if the operator key were rotated or lost). Keep it separately from the operator key |
-| `DATA_DIR` | a persistent volume (`/data`); journal, snapshot, accounts and sessions live here |
-| `PUBLIC_URL` | the public origin: written into every larva's NFT as its metadata URI at birth, and into the collection at `init_world`. Fix it before the first birth and never change it; a moved host keeps serving under the same domain, or older NFTs point at a dead address |
+| `DATA_DIR` | a persistent volume (`/data`); journal, snapshot (`snapshot.bin.gz`, ~150 MB, rewritten every five minutes), accounts and sessions live here |
+| `PUBLIC_URL` | the public origin: written into every fly's NFT as its metadata URI at birth, and into the collection at `init_world`. Fix it before the first birth and never change it; a moved host keeps serving under the same domain, or older NFTs point at a dead address |
 | `INSTAR_GAS_RESERVE` | SOL the operator keeps for fees before it pauses settlement (default 0.05) |
 | `GOOGLE_CLIENT_ID` | optional; enables Google sign-in |
 | `INSTAR_FRESH` | `1` once, on the very first boot against this program; remove afterwards |
 
 A mainnet world is a fresh genesis: new program, new journal. The boot check
-refuses to start if the world and the program disagree about how many larvae
+refuses to start if the world and the program disagree about how many flies
 exist, so a stale journal cannot quietly corrupt it.
 
-### d. Launch the token, then feed the dish
+### d. Launch the token, then feed the cage
 
 Launch `$INSTAR` on pump.fun with its **creator** set to the `fee.json`
 address from `npm run keys:new`; that field is written once, at launch, and
@@ -178,7 +182,7 @@ not, and fails while the fee keypair holds under 0.02 SOL. Every ten minutes the
 the coin's creator-fee vaults (bonding curve and, after graduation, the
 canonical PumpSwap pool) into the fee keypair and sweeps it into
 `fund(5000)`. `npx tsx scripts/fees.mts status` shows the vaults and the last
-claim. `fund` is permissionless: anyone can feed the dish from any wallet at
+claim. `fund` is permissionless: anyone can feed the cage from any wallet at
 any time, and the income does not stop when the process does.
 
 ## 4. What can go wrong, worst first
@@ -192,7 +196,7 @@ Without it their keys are unreadable and the SOL in them is gone. Back it up
 with the same care as the operator key; the process quarantines records it
 cannot open rather than overwriting them.
 
-**The process dies.** The dish stops advancing but nothing is lost: every exit
+**The process dies.** The cage stops advancing but nothing is lost: every exit
 is permissionless or keeper-driven, and the journal plus snapshot resume it.
 
 **The RPC rate-limits.** Settlement pauses with the ops queued and resumes;
@@ -203,7 +207,7 @@ chain before resending, so a birth, offer, death or epoch is never registered
 twice.
 
 **The volume is lost.** The journal is the world's memory; without it the
-process refuses to continue against a program that already holds larvae. Set
+process refuses to continue against a program that already holds flies. Set
 `INSTAR_ADMIN_TOKEN` and pull a backup hourly from a machine that is not the
 host: `INSTAR_ADMIN_TOKEN=… npx tsx scripts/backup.mts --pull https://your.domain`.
 That, and the rest of the world's life, is in `docs/OPERATIONS.md`.

@@ -4,10 +4,10 @@
 //   npx tsx scripts/journey.mts            (INSTAR_URL, default http://localhost:8787)
 //
 // Two users are created. The first signs in, is refused with a wrong pin, is
-// airdropped, buys the first larva on offer, lists it, unlists it, transfers
+// airdropped, buys the first fly on offer, lists it, unlists it, transfers
 // it to the second, and withdraws SOL to a sink address. A bad token is
 // rejected. Every step is asserted on what the API returns, and every change
-// of hands on what the larva's Core asset says on chain: the API is trusted
+// of hands on what the fly's Core asset says on chain: the API is trusted
 // for nothing it can be checked on.
 
 import assert from "assert";
@@ -67,11 +67,11 @@ ok(`/api/config collection ${cfg.collection.slice(0, 8)} is a Core account; /api
 const journal0 = (await get("/api/journal")).json;
 assert.equal(journal0.name, "instar");
 for (const k of ["cluster", "programId", "worldPda", "explorer", "seed", "era", "tick", "tickrate", "epoch", "epochInterval", "capacity", "bufferTicks",
-  "entries", "epochs", "larvae", "metabolism", "pool", "operator", "operatorBalance", "pendingOps", "settling", "txlog", "lineageNames", "stats"]) {
+  "entries", "epochs", "flies", "metabolism", "pool", "operator", "operatorBalance", "pendingOps", "settling", "txlog", "lineageNames", "stats"]) {
   assert.ok(k in journal0, `/api/journal missing ${k}`);
 }
 assert.ok(Number.isInteger(journal0.bufferTicks) && journal0.bufferTicks > 0, `bufferTicks ${journal0.bufferTicks}`);
-ok(`/api/journal complete — tick ${journal0.tick}, ${journal0.larvae.length} larvae on chain, pop ${journal0.stats.pop}, bufferTicks ${journal0.bufferTicks}`);
+ok(`/api/journal complete — tick ${journal0.tick}, ${journal0.flies.length} flies on chain, pop ${journal0.stats.pop}, bufferTicks ${journal0.bufferTicks}`);
 ok(`/api/config world layout — lastStateHash at byte ${cfg.world.lastStateHash.offset}`);
 
 // ---- auth --------------------------------------------------------------------
@@ -108,15 +108,15 @@ let me = (await post("/api/me", {}, a1.token)).json;
 assert.ok(BigInt(me.balance) >= BigInt(LAMPORTS_PER_SOL) / 6n, `balance ${me.balance}`);
 ok(`airdrop -> balance ${me.balance} lamports`);
 
-// ---- buy the first larva on offer --------------------------------------------
+// ---- buy the first fly on offer --------------------------------------------
 const deadline = Date.now() + OFFER_WAIT_MS;
 let offered: any = null;
 while (!offered && Date.now() < deadline) {
   const j = (await get("/api/journal")).json;
-  offered = j.larvae.find((l: any) => l.status === 1) ?? null;
+  offered = j.flies.find((l: any) => l.status === 1) ?? null;
   if (!offered) await new Promise(r => setTimeout(r, 3000));
 }
-assert.ok(offered, `no larva came up for sale within ${OFFER_WAIT_MS / 1000}s (pendingOps ${(await get("/api/journal")).json.pendingOps})`);
+assert.ok(offered, `no fly came up for sale within ${OFFER_WAIT_MS / 1000}s (pendingOps ${(await get("/api/journal")).json.pendingOps})`);
 const id = offered.id;
 const stale = (BigInt(offered.salePrice) + 1n).toString();
 await expectError(post("/api/buy", { id, lamports: stale }, a1.token), 409, /price changed/);
@@ -125,11 +125,11 @@ const bought = (await post("/api/buy", { id, lamports: offered.salePrice }, a1.t
 assert.ok(bought.ok && bought.sig, JSON.stringify(bought));
 me = (await post("/api/me", {}, a1.token)).json;
 assert.ok(me.owned.includes(id), `owned ${JSON.stringify(me.owned)}`);
-ok(`buy larva ${id} at ${offered.salePrice} lamports -> ${bought.sig.slice(0, 12)}; owned ${JSON.stringify(me.owned)}`);
+ok(`buy fly ${id} at ${offered.salePrice} lamports -> ${bought.sig.slice(0, 12)}; owned ${JSON.stringify(me.owned)}`);
 await expectError(post("/api/buy", { id }, a1.token), 409, /not offered/);
 ok("buying it again: refused");
 
-let rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+let rec = (await get("/api/journal")).json.flies.find((l: any) => l.id === id);
 assert.equal(rec.keeper, a1.wallet);
 let asset = await assetOnChain(rec.asset);
 assert.equal(asset.owner.toBase58(), a1.wallet, "the Core asset's owner is the buyer's custodial wallet");
@@ -137,31 +137,31 @@ assert.equal(asset.collection?.toBase58(), cfg.collection);
 assert.equal(asset.name, `Instar #${id}`);
 // the URI is baked at birth from the world's PUBLIC_URL, which need not be
 // the address this script reached the world by
-assert.equal(asset.uri, `${cfg.publicUrl}/api/larva/${id}.json`);
+assert.equal(asset.uri, `${cfg.publicUrl}/api/fly/${id}.json`);
 ok(`asset ${rec.asset.slice(0, 8)} owned by ${u1}'s wallet on chain, in the collection, uri -> ${cfg.publicUrl}`);
 
-const meta = (await get(`/api/larva/${id}.json`)).json;
+const meta = (await get(`/api/fly/${id}.json`)).json;
 assert.equal(meta.name, `Instar #${id}`); assert.equal(meta.symbol, "INSTAR");
-assert.equal(meta.image, `${cfg.publicUrl}/api/larva/${id}.svg`);
+assert.equal(meta.image, `${cfg.publicUrl}/api/fly/${id}.svg`);
 assert.deepEqual(meta.properties, { files: [{ uri: meta.image, type: "image/svg+xml" }], category: "image" });
 assert.ok(Array.isArray(meta.attributes) && meta.attributes.some((t: any) => t.trait_type === "Generation" && t.value === rec.generation));
-const svg = await fetch(`${BASE}/api/larva/${id}.svg`);
+const svg = await fetch(`${BASE}/api/fly/${id}.svg`);
 assert.equal(svg.headers.get("content-type"), "image/svg+xml");
 assert.ok((await svg.text()).startsWith("<svg"));
-ok("larva metadata is Metaplex-shaped; portrait served");
+ok("fly metadata is Metaplex-shaped; portrait served");
 
 // ---- list / unlist -----------------------------------------------------------
 const askPrice = "20000000";
 const listed = (await post("/api/list", { id, lamports: askPrice }, a1.token)).json;
 assert.ok(listed.ok, JSON.stringify(listed));
-rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+rec = (await get("/api/journal")).json.flies.find((l: any) => l.id === id);
 assert.equal(rec.salePrice, askPrice);
 assert.ok(typeof rec.listedAt === "number" && rec.listedAt >= Math.floor(Date.now() / 1000) - 120, `listedAt ${rec.listedAt}`);
 ok(`list at ${askPrice} lamports (listedAt ${rec.listedAt})`);
 await expectError(post("/api/list", { id, lamports: "0" }, a1.token), 400, /above zero/);
 const unlisted = (await post("/api/unlist", { id }, a1.token)).json;
 assert.ok(unlisted.ok, JSON.stringify(unlisted));
-rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+rec = (await get("/api/journal")).json.flies.find((l: any) => l.id === id);
 assert.equal(rec.salePrice, "0"); assert.equal(rec.listedAt, 0);
 ok("unlist clears the listing and its timestamp");
 
@@ -177,16 +177,16 @@ me = (await post("/api/me", {}, a1.token)).json;
 assert.ok(!me.owned.includes(id));
 asset = await assetOnChain(rec.asset);
 assert.equal(asset.owner.toBase58(), a2.wallet, "the transfer moved the Core asset");
-ok(`transfer larva ${id} -> ${u2}; asset owner on chain is ${u2}'s wallet`);
+ok(`transfer fly ${id} -> ${u2}; asset owner on chain is ${u2}'s wallet`);
 
 // ---- name the lineage ----------------------------------------------------------
-// a1 no longer keeps the larva, so it cannot name the line; a2 can, unless an
+// a1 no longer keeps the fly, so it cannot name the line; a2 can, unless an
 // earlier run of this script already claimed the same line under another user.
 await expectError(post("/api/name-lineage", { id, name: "mine now" }, a1.token), 403, /not yours/);
 const named = await post("/api/name-lineage", { id, name: `line-${suffix}` }, a2.token);
 if (named.status === 409) {
   assert.match(String(named.json.error), /already named/);
-  ok(`lineage of larva ${id} was named by an earlier run; a non-keeper is still refused`);
+  ok(`lineage of fly ${id} was named by an earlier run; a non-keeper is still refused`);
 } else {
   assert.ok(named.json.ok, JSON.stringify(named.json));
   assert.ok(Number.isInteger(named.json.lineage));
@@ -206,7 +206,7 @@ const back = (await post("/api/transfer", { id, to: a1.wallet }, a2.token)).json
 assert.ok(back.ok, JSON.stringify(back));
 asset = await assetOnChain(rec.asset);
 assert.equal(asset.owner.toBase58(), a1.wallet);
-rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+rec = (await get("/api/journal")).json.flies.find((l: any) => l.id === id);
 assert.equal(rec.keeper, a1.wallet); assert.equal(rec.salePrice, askPrice, "the listing is still on the record");
 const u3 = `buyer-${suffix}`;
 if (Date.now() < authWindowOpens) {
@@ -219,7 +219,7 @@ assert.ok((await post("/api/airdrop", {}, a3.token)).json.ok);
 await expectError(post("/api/buylisted", { id }, a3.token), 400, /NotForSale/);
 await expectError(post("/api/unlist", { id }, a2.token), 403, /not yours/);
 assert.ok((await post("/api/unlist", { id }, a1.token)).json.ok);
-rec = (await get("/api/journal")).json.larvae.find((l: any) => l.id === id);
+rec = (await get("/api/journal")).json.flies.find((l: any) => l.id === id);
 assert.equal(rec.salePrice, "0");
 ok(`native move ${u2} -> ${u1} with a listing open: buy_listed by ${u3} refused (NotForSale); ${u1} unlists`);
 
@@ -235,4 +235,4 @@ ok("withdraw to a malformed address refused");
 
 const j = (await get("/api/journal")).json;
 const mine = j.txlog.filter((t: any) => t.id === id).map((t: any) => t.kind);
-console.log(`journey passed: ${step} checks; txlog for larva ${id}: ${mine.join(" -> ")}`);
+console.log(`journey passed: ${step} checks; txlog for fly ${id}: ${mine.join(" -> ")}`);

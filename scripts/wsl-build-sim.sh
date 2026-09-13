@@ -1,9 +1,11 @@
 #!/bin/bash
 # Build the world engine: native tests (ci profile = release speed with
-# overflow checks ON), then the WASM module the site and the world process load.
+# overflow checks ON), then the WASM module the world process and the
+# verifier load.
 #   wsl -d Ubuntu-24.04 -u root -- bash /mnt/c/tech/connectomes/scripts/wsl-build-sim.sh
 # Tests MUST run --test-threads=1: they share the static world.
-# The probe gates run on Windows node afterwards: `node scripts/sim-gates.mjs`.
+# The gates run on Windows node afterwards, on the canonical MaleCNS data:
+# `node scripts/sim-gates.mjs`.
 set -eo pipefail
 export PATH="/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:/root/.avm/bin:$PATH"
 cd /mnt/c/tech/connectomes/sim

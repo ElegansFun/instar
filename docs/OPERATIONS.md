@@ -21,7 +21,7 @@ dropping it. `operator.mts` prints exactly what it is about to send and sends
 nothing without `--yes`; after a transaction it re-reads the World and prints
 every field that changed, so the diff is the receipt. A command it knows the
 program will refuse (a stranger winding down a live world, a recovery address
-equal to the operator, re-offering a larva a keeper still holds) stops before
+equal to the operator, re-offering a fly a keeper still holds) stops before
 sending. `withdraw-treasury` and `set-recovery` also refuse a destination
 that is not on the curve, is owned by a program, or has never signed a
 transaction — a mistyped address is usually still a valid one — unless
@@ -40,7 +40,7 @@ refused connection. Live, it answers 200 with:
 |---|---|---|
 | `ok` | `rpc.ok` and the queue is not stuck — nothing else; a failed journal write or a paused queue leaves `ok: true` | false |
 | `phase` | `live` | — |
-| `tick`, `ticksBehindWallClock` | the engine paces 20 ticks a second from the moment this process went live; a positive drift means the host cannot keep up | drift keeps growing |
+| `tick`, `ticksBehindWallClock` | the engine paces 10 ticks a second from the moment this process went live; a positive drift means the host cannot keep up | drift keeps growing |
 | `lastEpochPostedAgoS` | seconds since the last `post_epoch` landed, read from the persisted transaction log, so right after a restart it is the pre-restart age; `null` when no successful epoch is among the last 400 records | above 600 while `pendingOps` > 0 |
 | `pendingOps`, `stuckForS` | operator transactions waiting, and how long the head of that queue has not moved | `stuckForS` > 900: that is what turns `ok` false |
 | `settling` | false when the operator balance is below the gas reserve + one settlement; the queue holds, the world keeps running | false: top the operator up (below) |
@@ -72,7 +72,7 @@ In the logs, every line is prefixed `[instar]`. The ones that need a person:
 | `settlements paused — operator holds …` | out of gas; fund the operator |
 | `RPC rate limited — backing off for 60s` | the endpoint is throttling; if it repeats, move to a paid one |
 | `birth N has NOT landed (…) — holding the queue` | a birth the chain refused for a reason other than identity; the queue waits; read the error |
-| `death of #N refused with WrongStatus while the record is still alive` | the record and the world disagree about a living larva; the queue holds; needs a look at that creature on chain |
+| `death of #N refused with WrongStatus while the record is still alive` | the record and the world disagree about a living fly; the queue holds; needs a look at that creature on chain |
 | `JOURNAL WRITE FAILED` | the volume; see `journalOk` |
 | `THE WORLD IS WINDING DOWN` | the program refused new life: someone called `begin_wind_down` (you, or anyone after 90 days of silence) |
 | `REFUSING TO START` | identity mismatch between the journal and the program; see Restore |
@@ -88,13 +88,14 @@ npx tsx scripts/backup.mts --list <file>
 
 The archive is a gzipped ustar tar (`tar tzf` opens it) of `DATA_DIR`:
 `journal.json` (the replayable record and the op queue) and its `.bak`,
-`snapshot.bin`, `accounts.json` and its `.bak`, `sessions.json`,
+`snapshot.bin.gz`, `accounts.json` and its `.bak`, `sessions.json`,
 `genesis.lock` and the quarantine file. Two ways to take one:
 
-- **`--pull`** asks the running world for it: `GET /api/backup` builds the
-  same archive from the live objects (snapshot first, journal right after, in
-  one turn of the event loop, so the pair always resumes rather than
-  replays) and streams it. The route exists only when the process has
+- **`--pull`** asks the running world for it: `GET /api/backup` refreshes
+  the snapshot on disk if it is more than a minute old, serializes the
+  journal right after, and packs the two with the rest (so the pair always
+  resumes rather than replays). The archive is a little over the snapshot's
+  size (~150 MB at 40 flies; the engine memory is ~0.6 GB raw, gzipped). The route exists only when the process has
   `INSTAR_ADMIN_TOKEN` set, takes the token as `?token=` or a bearer header
   (`--pull` sends the header), and answers 403 to anything else. This is the
   mainnet backup: run it **from outside the host** — a cron on another
@@ -121,9 +122,9 @@ those archives, or take a fresh backup right after rotating and destroy the
 old ones.
 
 Schedule: hourly on mainnet, and keep a day of them. Nothing on chain
-depends on a backup — every larva, vault and credit lives in the program —
+depends on a backup — every fly, vault and credit lives in the program —
 but the journal is the world's memory: without it the process cannot prove
-to itself which larvae it named, and refuses to continue against a program
+to itself which flies it named, and refuses to continue against a program
 that already holds them.
 
 ### Restore
@@ -162,7 +163,66 @@ What the world does with an older journal, at boot, in order:
    them, are re-queued as reconstructed births.
 3. More than that, or any id whose genome does not match, is
    `REFUSING TO START`. That is the right answer: a journal that far behind
-   would put strangers' larvae in the record. Use a newer backup.
+   would put strangers' flies in the record. Use a newer backup.
+
+## Memory, the snapshot, and the verifier
+
+The engine allocates every fly's genome as one 16-bit weight per connection
+(6.24 M connections x 40 slots ~ 0.5 GB) plus the graph and per-fly neural
+state: about 0.6 GB of WebAssembly memory, `heap_bytes` in the boot log.
+The host needs **2 GB of RAM or more**: the snapshot copies that memory once
+more before compressing it (off the main thread; the world keeps ticking),
+and a backup pull holds the compressed image and the tar at the same time.
+Node needs no flag for it. The boot log prints `engine N ms/tick` every
+minute and `engine N ms per fly-tick -> budget M flies` every epoch: the
+world runs 10 ticks a second and caps its carrying capacity at
+`floor(80 / ms-per-fly-tick)` flies (never below 8, never above 40) so the
+engine stays under 80 ms of each 100 ms tick; the cap in force is logged as
+`capacity N (economy E, engine budget B)` and is `/api/journal.capacity`. A
+world over budget anyway shows as `ticksBehindWallClock` in `/api/health`.
+Carrying capacity is therefore bounded by compute on the host, not only by
+metabolism (docs/ECONOMY.md).
+
+`DATA_DIR/snapshot.bin.gz` is written every five minutes and at shutdown:
+a JSON header (tick, the fly ids per slot, the alloc sizes) and the raw
+engine memory, gzipped, ~150 MB at 40 flies. Once per epoch, in the last
+minute (600 ticks) before the boundary, the world also writes
+`snapshot-epoch-N.bin.gz` (same format, header carries `epoch` and
+`boundary`) and keeps the two newest; a fresh era discards any left over.
+The journal is written right after each image so the pair agrees.
+
+`GET /api/snapshot` streams the five-minute file as it is on disk. It never
+triggers a copy or a gzip: the only requests that refresh the image first
+(when it is older than a minute) are `GET /api/backup` and `/api/snapshot`
+with the admin token (`?token=` or bearer), because the copy stalls the
+tick loop for the 0.6 GB memcpy and the gzip takes seconds of CPU.
+`GET /api/snapshot?epoch=N` streams the retained pre-boundary image of
+epoch N (404 when it is not one of the two kept; `/api/journal.snapshotEpochs`
+lists them). Both are for the verifiers and mirrors, not browsers.
+
+```
+INSTAR_URL=https://your.domain npx tsx scripts/verify-epoch.mts [--rpc URL] [--post] [--next]
+```
+
+is the public verification path. It reads the World account raw from the
+RPC at the offsets `/api/config` publishes and, when the epoch the account
+holds is one the world retains, fetches `/api/snapshot?epoch=N`, boots the
+same `site/instar_sim.wasm` over the same `data/canonical` files from the
+checkout, replays the last minute to the boundary the way the world does
+and compares at once. Otherwise it takes the five-minute image and replays
+to the posted boundary if the image predates it, or else to the next
+boundary as the journal schedules the inputs, waiting up to ten minutes for
+the world to post that epoch; `--next` always replays to the first boundary
+the chain has not posted. Restoring an image checks its graph slabs
+byte-for-byte against the canonical files and has the engine rebuild its
+derived tables from them, so a snapshot cannot carry a different connectome
+into the replay. `VERIFIED` means the chain
+agrees; `MISMATCH` means the world's code or data differ from yours, or the
+world is lying. With `--post` and the world's `INSTAR_ADMIN_TOKEN` the
+verdict is written to `/api/journal.verifier`: date, epoch, hash, verdict,
+the set of distinct epochs that verified (a re-run of the same epoch adds
+nothing) and the verdict per epoch, so a MISMATCH stays on the record. Run
+it from a cron beside the backup pull. It needs about 1.5 GB of memory.
 
 ## The operator balance
 
@@ -182,8 +242,9 @@ Getting money out of the world, the other way:
 npx tsx scripts/operator.mts withdraw-treasury <to> <metabolism> <pool> --yes    # lamports, all, or 0
 ```
 
-Metabolism sets carrying capacity (8 larvae plus 20 per SOL, up to 48), so
-withdrawing it shrinks the dish on the next chain poll; the pool pays life
+Metabolism sets the economy's carrying capacity (8 flies plus 20 per SOL,
+up to 40, the engine's slot count; the engine budget above may cap it
+lower), so withdrawing it shrinks the cage on the next chain poll; the pool pays life
 rewards, so withdrawing it makes the next reward batch scale down to what is
 left. Neither touches a vault or a credit. Feeding it back in is
 `fund <lamports> <pool_bps>`, and anyone may do that from any wallet.
@@ -205,8 +266,10 @@ world.
 The supervisor restarts it. On boot it binds the port first (`/api/health`
 answers `replaying` from then on), reloads the journal (or its `.bak` if the
 journal is torn), resumes from the snapshot when the snapshot is no newer
-than the journal (otherwise replays from genesis, which takes minutes and
-shows as `tick` climbing towards `target` in `/api/health`), reconciles
+than the journal (otherwise replays from genesis: the engine runs about as
+fast as the wall clock at 40 flies, so a long-lived world replays for as long
+as it has lived, and it shows as `tick` climbing towards `target` in
+`/api/health`; keep the snapshot), reconciles
 identity with the program as under Restore, and drains whatever was queued.
 A death or epoch that was sent but not confirmed at the moment of the crash
 is looked up before it is sent again.
@@ -271,9 +334,9 @@ are (see Backups). Localnet and devnet worlds started without
 derives the same one when the variable is unset, which is how such a world
 is moved onto an explicit key before its operator key is ever rotated.
 
-## Re-offering a donated larva
+## Re-offering a donated fly
 
-A keeper can send a larva back to the dish with a plain Core transfer to the
+A keeper can send a fly back to the cage with a plain Core transfer to the
 World PDA (the custodial `/api/transfer` with the World PDA as `to`, or any
 wallet). The record still says OWNED, held by an address no keeper can sign
 for. The process never re-sells on its own; the operator does:
@@ -282,9 +345,9 @@ for. The process never re-sells on its own; the operator does:
 npx tsx scripts/operator.mts re-offer <id> <lamports> --yes
 ```
 
-It prints the larva's state and refuses anything but a WILD larva or an OWNED
+It prints the fly's state and refuses anything but a WILD fly or an OWNED
 one whose asset is in the World PDA's hands. `open_offer` clears any stale
-listing and puts the larva up at that price as if newborn; its vault travels
+listing and puts the fly up at that price as if newborn; its vault travels
 with it.
 
 `force-settle-cull <id>` is the other by-hand settlement: a keeper asked for
@@ -310,7 +373,7 @@ npx tsx scripts/operator.mts recover-all --to <recovery> --yes     # run it as o
    new life. Deaths and epochs still settle, so leave it running: every
    death moves a vault into credits keepers can withdraw.
 3. Keepers exit on their own: `reclaim_vault` (the site's button) turns a
-   living larva's vault into their credit and burns the asset; `withdraw`
+   living fly's vault into their credit and burns the asset; `withdraw`
    takes credit out. Tell them, and give them the 180 days.
 4. `sweep_to_recovery` (step 2): metabolism and pool to the recovery
    address. Anyone may send this; it touches no vault or credit.
@@ -318,9 +381,9 @@ npx tsx scripts/operator.mts recover-all --to <recovery> --yes     # run it as o
    recovery and the ledger is zeroed; any vault or credit nobody claimed
    goes with it. `TooEarly` before then, and the command prints the date.
 6. Stop the process and take a last backup; keep it: the journal is the
-   only replayable history of what those larvae did. Then
+   only replayable history of what those flies did. Then
    `sweep-custodial --to <recovery> [--nfts] --yes`: every custodial
-   wallet's SOL (and, with `--nfts`, its larvae) to recovery. It refuses
+   wallet's SOL (and, with `--nfts`, its flies) to recovery. It refuses
    until the chain says `escheated`.
 7. `recover-all` again (step 4): every Creature and Credit PDA is closed
    for its rent, then the World PDA; (step 5) the fee keypair and the

@@ -160,7 +160,7 @@ async function restore(file: string, force: boolean) {
   if (current) {
     console.log(`current:  ${describeJournal(current)}`);
     const other = current.cluster !== archived.cluster || current.programId !== archived.programId;
-    if (other && !force) throw new Error(`the archive is for ${archived.cluster}:${archived.programId}, DATA_DIR holds ${current.cluster}:${current.programId} — the world would start fresh against a program that already holds its larvae; --force if that is really what you want`);
+    if (other && !force) throw new Error(`the archive is for ${archived.cluster}:${archived.programId}, DATA_DIR holds ${current.cluster}:${current.programId} — the world would start fresh against a program that already holds its flies; --force if that is really what you want`);
     if (!other && archived.tick < current.tick && !force) throw new Error(`the archive is at tick ${archived.tick}, older than the current record at ${current.tick} — restore only from a newer backup, or --force to roll the record back`);
     if (other || archived.tick < current.tick) console.log(`--force: restoring anyway`);
   }

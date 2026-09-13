@@ -28,6 +28,7 @@
     "backup": "tsx scripts/backup.mts",
     "fees": "tsx scripts/fees.mts",
     "verify": "tsx scripts/verify.mts",
+    "verify:epoch": "tsx scripts/verify-epoch.mts",
     "journey": "tsx scripts/journey.mts",
     "check:recovery": "tsx scripts/check-recovery.mts",
     "roles:check": "node scripts/roles-check.mjs",

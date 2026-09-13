@@ -30,7 +30,7 @@ export const PUBLIC_RPC: Record<Cluster, string> = {
   "mainnet-beta": "https://api.mainnet-beta.solana.com",
 };
 
-/// Metaplex Core: every larva is an Asset in the world's Collection, and the
+/// Metaplex Core: every fly is an Asset in the world's Collection, and the
 /// asset's owner is the only record of who keeps it.
 export const MPL_CORE = new PublicKey("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
 
@@ -92,14 +92,14 @@ export type WorldView = {
 };
 
 /// The Core asset as the chain holds it. `collection` is null only for an
-/// asset that is not in one, which no larva ever is.
+/// asset that is not in one, which no fly ever is.
 export type AssetView = {
   address: PublicKey; owner: PublicKey; collection: PublicKey | null; name: string; uri: string;
   frozen: boolean; attributes: Record<string, string>;
 };
 
 /// A Creature record joined with its asset: `keeper` is the asset's owner
-/// (the World PDA while the dish holds it, PublicKey.default once burned —
+/// (the World PDA while the cage holds it, PublicKey.default once burned —
 /// by the program at death, or natively by its owner while it still lived).
 /// `listedAt` is the unix time of the current listing, 0 when unlisted.
 export type CreatureView = {
@@ -298,7 +298,7 @@ export class Chain {
   /// the base (owner, update authority, name, uri) and the plugin registry
   /// behind it (frozen flag, attributes). Null for a burned asset: Core's
   /// BurnV1 does not close the account, it shrinks it to a single
-  /// `Key::Uninitialized` byte and refunds the rent, so a burned larva's
+  /// `Key::Uninitialized` byte and refunds the rent, so a burned fly's
   /// address still answers, with nothing in it.
   static decodeAsset(address: PublicKey, info: AccountInfo<Buffer>): AssetView | null {
     if (!info.owner.equals(MPL_CORE)) throw new Error(`${address.toBase58()} is not a Core asset (owner ${info.owner.toBase58()})`);
@@ -347,7 +347,7 @@ export class Chain {
 
   /// Every creature in [from, to), in id order, each joined with its asset's
   /// owner. Missing ids (never born) are skipped. Dead records come from the
-  /// cache so the sweep costs the living population, not every larva that
+  /// cache so the sweep costs the living population, not every fly that
   /// has ever existed.
   async creatures(range: { from: number; to: number }): Promise<CreatureView[]> {
     const out: CreatureView[] = [];
@@ -568,14 +568,14 @@ export class Chain {
     return this.send([ix], [this.op, asset], async () => (await this.creature(id)) !== null, CU.CORE);
   }
 
-  /// Offer a larva the dish holds: a WILD newborn, or an OWNED one whose
+  /// Offer a fly the cage holds: a WILD newborn, or an OWNED one whose
   /// asset was sent back to the World PDA natively (the record cannot see
   /// that transfer; the program checks the asset's owner). Landed once the
-  /// record has left "held by the dish, not offered": OFFERED, or already
+  /// record has left "held by the cage, not offered": OFFERED, or already
   /// bought (OWNED by a keeper).
   async openOffer(id: number, price: bigint): Promise<string> {
     const c = await this.creature(id);
-    if (!c) throw new ProgramError("WrongId", [], `openOffer: larva ${id} was never registered`);
+    if (!c) throw new ProgramError("WrongId", [], `openOffer: fly ${id} was never registered`);
     const ix = await this.program.methods.openOffer(bn(id), bn(price))
       .accountsPartial({ world: this.worldPda, operator: this.op.publicKey, creature: this.creaturePda(id), asset: c.asset })
       .instruction();
@@ -603,15 +603,15 @@ export class Chain {
 
   /// The keeper's 10% goes to whoever owns the asset when the death settles,
   /// read here at send time; the program checks the credit PDA's seeds
-  /// against that owner. The dish itself (World PDA) has no credit, and
-  /// neither does a larva whose owner already burned the asset natively
+  /// against that owner. The cage itself (World PDA) has no credit, and
+  /// neither does a fly whose owner already burned the asset natively
   /// (the account is a Core stub, `keeper` reads as PublicKey.default): the
   /// program then routes the keeper share to metabolism and must be passed
   /// no credit account at all.
   async settleDeath(id: number, cause: number, tick: number, heirs: number[]): Promise<string> {
     const c = await this.creature(id);
-    if (!c) throw new ProgramError("WrongId", [], `settleDeath: larva ${id} was never registered`);
-    if (c.status === STATUS.DEAD) throw new ProgramError("WrongStatus", [], `settleDeath: larva ${id} is already dead`);
+    if (!c) throw new ProgramError("WrongId", [], `settleDeath: fly ${id} was never registered`);
+    if (c.status === STATUS.DEAD) throw new ProgramError("WrongStatus", [], `settleDeath: fly ${id} is already dead`);
     const noKeeper = c.keeper.equals(this.worldPda) || c.keeper.equals(PublicKey.default);
     const keeperCredit = noKeeper ? null : this.creditPda(c.keeper);
     const ix = await this.program.methods.settleDeath(bn(id), cause, bn(tick), heirs.length)
@@ -790,8 +790,8 @@ export class Chain {
   /// burned. The keeper is the asset's owner at settlement, read here.
   async forceSettleCull(id: number, payer: Keypair = this.op): Promise<string> {
     const c = await this.creature(id);
-    if (!c) throw new ProgramError("WrongId", [], `forceSettleCull: larva ${id} was never registered`);
-    if (!c.pendingCull) throw new ProgramError("WrongStatus", [], `forceSettleCull: larva ${id} has no cull pending`);
+    if (!c) throw new ProgramError("WrongId", [], `forceSettleCull: fly ${id} was never registered`);
+    if (!c.pendingCull) throw new ProgramError("WrongStatus", [], `forceSettleCull: fly ${id} has no cull pending`);
     const ix = await this.program.methods.forceSettleCull(bn(id))
       .accountsPartial({
         world: this.worldPda, payer: payer.publicKey, creature: this.creaturePda(id), asset: c.asset,
@@ -805,17 +805,17 @@ export class Chain {
   // ---- keeper instructions ----------------------------------------------------
 
   /// Everything a keeper does, signed with their own key. The world never
-  /// moves somebody's larva on their behalf: it holds the key so they need no
+  /// moves somebody's fly on their behalf: it holds the key so they need no
   /// wallet extension, but every trade is their transaction, from their
   /// address, paying their own fees. Each call reads the Creature first for
-  /// its asset address; a larva that was never born is WrongId here, as it
+  /// its asset address; a fly that was never born is WrongId here, as it
   /// would be from the program.
   asKeeper(keypair: Keypair) {
     const me = keypair.publicKey;
     const creature = (id: number) => this.creaturePda(id);
     const rec = async (id: number) => {
       const c = await this.creature(id);
-      if (!c) throw new ProgramError("WrongId", [], `no larva ${id}`);
+      if (!c) throw new ProgramError("WrongId", [], `no fly ${id}`);
       return c;
     };
     const ownedBy = (id: number, who: PublicKey) => async () => (await this.creature(id))?.keeper.equals(who) ?? false;

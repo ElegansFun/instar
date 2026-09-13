@@ -1,20 +1,33 @@
-// The world's HTTP face: the journal for mirrors, the market for keepers,
-// the static site. Every trade below is signed by the keeper's own custodial
-// key; the operator never buys, sells or moves a larva on anyone's behalf.
+// The world's HTTP face: the journal for mirrors, the live stream for the
+// site, the market for keepers, the static site. Every trade below is signed
+// by the keeper's own custodial key; the operator never buys, sells or moves
+// a fly on anyone's behalf.
 
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
-import * as zlib from "zlib";
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { Chain, PUBLIC_RPC, STATUS, STATUS_NAME, formatSol, loadIdl, type CreatureView, type WorldView, type Cluster } from "../chain/solana.mts";
 import { Accounts } from "./accounts.mts";
-import { BACKUP_FILES, gzipArchive, type Entry as ArchiveEntry } from "./archive.mts";
-import { Engine } from "./engine.mts";
-import { JournalStore, type LineageName } from "./journal.mts";
+import { BACKUP_FILES, gzipArchiveAsync, type Entry as ArchiveEntry } from "./archive.mts";
+import { Engine, FIRE_GROUP, POSE } from "./engine.mts";
+import { JournalStore, type LineageName, type VerifierRec } from "./journal.mts";
 import { OpQueue } from "./ops.mts";
-import { larvaSvg } from "./art.mts";
+import { flySvg } from "./art.mts";
+import { roleCountsOf, ROLE_GROUPS } from "./roles.mts";
+
+/// One /api/stream frame: what the site renders from, ten times a second.
+export type StreamFly = {
+  id: number; slot: number; gen: number; lin: number; age: number; mode: 0 | 1; s: number;
+  x: number; y: number; z: number; h: number; p: number; r: number; e: number;
+  wb: number; legs: number[]; pr: number; fired: Record<keyof typeof FIRE_GROUP, number>;
+};
+/// `seq` numbers events across the process so a client that sees the same
+/// event in two frames shows it once; `b` is the engine's second operand
+/// (landing surface, death cause, birth parent slot or 255).
+export type StreamEvent = { seq: number; tick: number; kind: number; name: string; uid: number; b: number; cause: string | null };
+export type Frame = { t: number; light: number; temp: number; flies: StreamFly[]; events: StreamEvent[] };
 
 export type WorldContext = {
   cluster: Cluster;
@@ -39,14 +52,26 @@ export type WorldContext = {
   lastEpoch(): number;
   /// where the wall clock and the tick were when this process started
   startedAt: { wall: number; tick: number };
-  larvae(): CreatureView[];
+  flies(): CreatureView[];
   world(): WorldView | null;
   refreshChain(): Promise<void>;
-  snapshotMeta(): Record<string, unknown>;
-  /// the snapshot file's bytes as saveSnapshot would write them now
-  snapshotBytes(): Buffer;
-  /// what the engine knows about a larva that may not be on chain yet
-  engineLarva(id: number): { generation: number; lineage: number; genomeHash: string } | null;
+  /// the current frame for /api/stream; `consume` (default) takes the
+  /// events since the previous consuming call, false leaves them
+  frame(consume?: boolean): Frame;
+  /// the five-minute gzip image; refreshed first when this process has not
+  /// written one yet, or it is older than `refreshAfterMs`
+  snapshotFile(refreshAfterMs: number): Promise<string>;
+  /// the newest image on disk (five-minute or pre-boundary); written first
+  /// only when there is none
+  latestSnapshotFile(): Promise<string>;
+  /// epochs whose pre-boundary image is retained, ascending
+  snapshotEpochs(): number[];
+  /// the retained pre-boundary image of `epoch`, or null
+  snapshotEpochFile(epoch: number): string | null;
+  /// what the engine knows about a fly that may not be on chain yet
+  engineFly(id: number): { slot: number; generation: number; lineage: number; genomeHash: string } | null;
+  /// the cage geometry the engine simulates, for the renderer
+  arena: unknown;
   log(line: string): void;
 };
 
@@ -69,9 +94,15 @@ const AUTH_RATE = { max: 5, windowMs: 60_000 };
 const TRUST_PROXY = process.env.INSTAR_TRUST_PROXY === "1";
 const AIRDROP_LAMPORTS = BigInt(LAMPORTS_PER_SOL);
 /// Devnet's faucet rate-limits by IP; when it refuses, the operator tops the
-/// account up from its own devnet SOL, enough to buy a larva and cash out.
+/// account up from its own devnet SOL, enough to buy a fly and cash out.
 const DEVNET_TOPUP_LAMPORTS = BigInt(LAMPORTS_PER_SOL) / 5n;
-const SNAPSHOT_CACHE_MS = 5000;
+/// GET /api/backup (and /api/snapshot with the admin token) refreshes the
+/// on-disk image first if it is older than this; the public route never does
+const SNAPSHOT_REFRESH_MS = 60_000;
+/// /api/stream frames per second
+const STREAM_HZ = 10;
+const STREAM_MAX_CLIENTS = 200;
+const FIRED_STRIDE_MAX = 64;
 /// /api/health: a queue whose head has not moved for this long is stuck
 const STUCK_AFTER_MS = 15 * 60_000;
 const RPC_PROBE_MS = 5000;
@@ -85,7 +116,7 @@ class HttpError extends Error {
 
 const lamports = (v: bigint) => v.toString();
 
-function larvaJson(c: CreatureView) {
+function flyJson(c: CreatureView) {
   return {
     id: c.id, asset: c.asset.toBase58(), keeper: c.keeper.toBase58(), status: c.status, statusName: STATUS_NAME[c.status],
     vault: lamports(c.vault), salePrice: lamports(c.salePrice), listedBy: c.listedBy.toBase58(), listedAt: c.listedAt, generation: c.generation,
@@ -113,8 +144,43 @@ export function createServer(boot: Boot): http.Server {
 
 function handler(ctx: WorldContext) {
   const authHits = new Map<string, number[]>();
-  let snapCache: { gz: Buffer; at: number } | null = null;
   const idlJson = JSON.stringify(loadIdl());
+
+  // ---- /api/stream: one frame per period, written to every open client.
+  // The timer runs only while someone is listening and re-arms against its
+  // own schedule (not against when the last callback happened to run), so
+  // an engine tick that holds the event loop delays a frame without lowering
+  // the rate. A client that cannot keep up (socket buffer full) is dropped
+  // rather than buffered forever.
+  const streamClients = new Set<http.ServerResponse>();
+  const STREAM_PERIOD_MS = 1000 / STREAM_HZ;
+  let streamNext = 0;
+  let streamTimer: NodeJS.Timeout | undefined;
+  const streamTick = () => {
+    streamTimer = undefined;
+    if (!streamClients.size) return;
+    const data = `data: ${JSON.stringify(ctx.frame())}\n\n`;
+    for (const res of streamClients) {
+      if (res.writableNeedDrain || res.destroyed) { res.destroy(); streamClients.delete(res); continue; }
+      res.write(data);
+    }
+    streamNext += STREAM_PERIOD_MS;
+    const now = Date.now();
+    // a stall longer than a period skips frames rather than bunching them;
+    // a shorter one is caught up by the next frame going out at once
+    if (streamNext < now - STREAM_PERIOD_MS) streamNext = now;
+    streamTimer = setTimeout(streamTick, Math.max(0, streamNext - now));
+  };
+  const openStream = (req: http.IncomingMessage, res: http.ServerResponse) => {
+    if (streamClients.size >= STREAM_MAX_CLIENTS) throw new HttpError(503, "too many stream clients");
+    res.writeHead(200, {
+      "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no",
+    });
+    res.write(`retry: 2000\ndata: ${JSON.stringify(ctx.frame(false))}\n\n`);
+    streamClients.add(res);
+    req.on("close", () => streamClients.delete(res));
+    if (!streamTimer) { streamNext = Date.now(); streamTimer = setTimeout(streamTick, STREAM_PERIOD_MS); }
+  };
 
   const withTimeout = <T,>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`no answer in ${ms} ms`)), ms);
@@ -157,16 +223,18 @@ function handler(ctx: WorldContext) {
     };
   };
 
-  /// The same archive scripts/backup.mts makes, from the live objects: the
-  /// snapshot is taken first and the journal right after, in one turn of
-  /// the event loop, so the pair is consistent and resumes rather than
-  /// replays. The .bak files, genesis.lock and the quarantine file have no
-  /// live object and come from the disk.
-  const backupArchive = (): Buffer => {
+  /// The same archive scripts/backup.mts makes. The snapshot is the world's
+  /// gzip image, refreshed first if it is stale (0.6 GB compressed off the
+  /// main thread), and the journal is serialized right after the refresh
+  /// completes, so the pair is consistent and resumes rather than replays.
+  /// The .bak files, genesis.lock and the quarantine file have no live
+  /// object and come from the disk. The tar is gzipped off the main thread
+  /// too: its bulk is already compressed.
+  const backupArchive = async (): Promise<Buffer> => {
+    const snapshot = await ctx.snapshotFile(SNAPSHOT_REFRESH_MS);
     const now = Date.now();
     const { accounts, sessions } = ctx.accounts.serialize();
     const liveEntries: Record<string, Buffer> = {
-      "snapshot.bin": ctx.snapshotBytes(),
       "journal.json": Buffer.from(JSON.stringify(ctx.store.journal)),
       "accounts.json": Buffer.from(accounts),
       "sessions.json": Buffer.from(sessions),
@@ -174,11 +242,11 @@ function handler(ctx: WorldContext) {
     const entries: ArchiveEntry[] = [];
     for (const name of BACKUP_FILES) {
       if (liveEntries[name]) { entries.push({ name, data: liveEntries[name], mtime: now }); continue; }
-      const file = path.join(ctx.dataDir, name);
+      const file = name === path.basename(snapshot) ? snapshot : path.join(ctx.dataDir, name);
       if (!fs.existsSync(file)) continue;
       entries.push({ name, data: fs.readFileSync(file), mtime: fs.statSync(file).mtimeMs });
     }
-    return gzipArchive(entries);
+    return gzipArchiveAsync(entries);
   };
 
   /// Constant time, length included: a mismatch must not say how much matched.
@@ -214,7 +282,7 @@ function handler(ctx: WorldContext) {
       seed: j.seed, era: j.era, tick: ctx.tick(), tickrate: j.tickrate, epoch: ctx.lastEpoch(), epochInterval: j.epochInterval,
       bufferTicks: ctx.bufferTicks,
       capacity: ctx.capacity(), entries: j.entries, epochs: j.epochs,
-      larvae: ctx.larvae().map(larvaJson),
+      flies: ctx.flies().map(flyJson),
       metabolism: lamports(w?.metabolism ?? 0n), pool: lamports(w?.pool ?? 0n),
       operator: ctx.chain.operator.publicKey.toBase58(), operatorBalance: lamports(ctx.ops.operatorBalance),
       pendingOps: ctx.ops.length,
@@ -223,7 +291,7 @@ function handler(ctx: WorldContext) {
       // say so rather than quietly showing a stale world.
       settling: !ctx.ops.outOfGas,
       journalOk: !ctx.store.persistFailed,
-      txlog: j.txlog.slice(-200), lineageNames: j.lineageNames,
+      txlog: j.txlog.slice(-200), lineageNames: j.lineageNames, verifier: j.verifier, snapshotEpochs: ctx.snapshotEpochs(),
       stats: { pop: e.popCount, births: e.births, deaths: e.deaths, kills: e.kills, maxGen: e.maxGeneration },
       onChain: w ? { nextId: w.nextId, totalAlive: w.totalAlive, lastEpoch: w.lastEpoch, windDown: w.windDown } : null,
     };
@@ -246,9 +314,9 @@ function handler(ctx: WorldContext) {
     return h.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
   };
 
-  const larvaById = (id: number) => {
-    const c = ctx.larvae().find(x => x.id === id);
-    if (!c) throw new HttpError(404, `no larva ${id}`);
+  const flyById = (id: number) => {
+    const c = ctx.flies().find(x => x.id === id);
+    if (!c) throw new HttpError(404, `no fly ${id}`);
     return c;
   };
 
@@ -286,6 +354,30 @@ function handler(ctx: WorldContext) {
       const user = ctx.accounts.sessionUser(token)!;
       return { token, ...ctx.accounts.profile(user), wallet: ctx.accounts.address(user).toBase58() };
     }
+    if (url === "/api/verifier") {
+      // scripts/verify-epoch.mts posts its verdict here so the site can say
+      // "verified by the CLI verifier on <date>". Admin-token gated: the
+      // claim is the operator's, and an unset token means no such route.
+      // The record keeps the set of distinct epochs that verified and the
+      // verdict per epoch: a re-run adds nothing, a MISMATCH stays visible.
+      if (!ctx.adminToken) throw new HttpError(404, "no such route");
+      if (!adminAuthorized(bearer(req))) throw new HttpError(403, "forbidden");
+      const epoch = parseId(p.epoch);
+      if (!/^[0-9a-f]{16}$/.test(String(p.hash ?? ""))) throw new HttpError(400, "hash must be 16 hex characters");
+      if (p.verdict !== "VERIFIED" && p.verdict !== "MISMATCH") throw new HttpError(400, "verdict must be VERIFIED or MISMATCH");
+      const prior = ctx.store.journal.verifier;
+      const epochs = new Set(prior?.epochs ?? []);
+      if (p.verdict === "VERIFIED") epochs.add(epoch); else epochs.delete(epoch);
+      const rec: VerifierRec = {
+        at: new Date().toISOString(), epoch, hash: String(p.hash), verdict: p.verdict,
+        sig: typeof p.sig === "string" && p.sig ? p.sig.slice(0, 96) : null,
+        epochs: [...epochs].sort((a, b) => a - b), verdicts: { ...prior?.verdicts, [epoch]: p.verdict },
+      };
+      ctx.store.journal.verifier = rec;
+      ctx.store.persist();
+      ctx.log(`verifier: epoch ${epoch} ${rec.verdict} (${rec.epochs.length} distinct epoch(s) verified)`);
+      return { ok: true, verifier: rec };
+    }
 
     const who = ctx.accounts.sessionUser(bearer(req));
     if (!who) throw new HttpError(401, "not signed in");
@@ -294,21 +386,21 @@ function handler(ctx: WorldContext) {
 
     if (url === "/api/me") {
       const [balance, credit] = await Promise.all([ctx.chain.balance(me), ctx.chain.creditOf(me)]);
-      const owned = ctx.larvae().filter(c => c.status === STATUS.OWNED && c.keeper.equals(me)).map(c => c.id);
+      const owned = ctx.flies().filter(c => c.status === STATUS.OWNED && c.keeper.equals(me)).map(c => c.id);
       return { ...ctx.accounts.profile(who), wallet: me.toBase58(), balance: lamports(balance), credit: lamports(credit), owned };
     }
 
     if (url === "/api/name-lineage") {
       // Naming a bloodline is a claim on the record, not a chain action — it
       // costs nothing and lives in the journal beside the lineage. The claim
-      // belongs to whoever keeps a living larva of that line.
+      // belongs to whoever keeps a living fly of that line.
       const id = parseId(p.id);
       const name = String(p.name ?? "").trim().slice(0, 32);
       if (name.length < 2) throw new HttpError(400, "name it something (2-32 characters)");
-      const c = larvaById(id);
+      const c = flyById(id);
       if (!c.keeper.equals(me) || c.status !== STATUS.OWNED) throw new HttpError(403, "not yours");
-      const eng = ctx.engineLarva(id);
-      if (!eng) throw new HttpError(409, `#${id} is not on the plate right now`);
+      const eng = ctx.engineFly(id);
+      if (!eng) throw new HttpError(409, `#${id} is not in the cage right now`);
       const lineage = eng.lineage;
       const names = ctx.store.journal.lineageNames;
       const held = names[lineage];
@@ -340,7 +432,7 @@ function handler(ctx: WorldContext) {
 
     const keeper = ctx.chain.asKeeper(keypair);
     const mine = (id: number) => {
-      const c = larvaById(id);
+      const c = flyById(id);
       if (!c.keeper.equals(me) || c.status !== STATUS.OWNED) throw new HttpError(403, "not yours");
       return c;
     };
@@ -349,14 +441,14 @@ function handler(ctx: WorldContext) {
     try {
       if (url === "/api/buy") {
         id = parseId(p.id);
-        const c = larvaById(id);
+        const c = flyById(id);
         if (c.status !== STATUS.OFFERED) throw new HttpError(409, "not offered");
         // the buyer pays the price they were shown, not whatever the seller
         // has changed it to since: the program refuses a mismatch (WrongPrice)
         kind = "buy"; sig = await keeper.buy(id, p.lamports === undefined ? c.salePrice : parseLamports(p.lamports));
       } else if (url === "/api/buylisted") {
         id = parseId(p.id);
-        const c = larvaById(id);
+        const c = flyById(id);
         if (c.status !== STATUS.OWNED || c.salePrice === 0n) throw new HttpError(409, "not listed");
         if (c.keeper.equals(me)) throw new HttpError(409, "that is already yours");
         kind = "resale"; sig = await keeper.buyListed(id, p.lamports === undefined ? c.salePrice : parseLamports(p.lamports));
@@ -403,9 +495,9 @@ function handler(ctx: WorldContext) {
 
   function friendly(name: string) {
     return ({
-      WrongStatus: "the larva is not in a state that allows this", NotForSale: "not for sale",
-      WrongPrice: "the price changed — look again", NotOwner: "not yours", WrongId: "no such larva",
-      AssetMismatch: "that NFT is not this larva's", WrongCollection: "that NFT is not from this world",
+      WrongStatus: "the fly is not in a state that allows this", NotForSale: "not for sale",
+      WrongPrice: "the price changed — look again", NotOwner: "not yours", WrongId: "no such fly",
+      AssetMismatch: "that NFT is not this fly's", WrongCollection: "that NFT is not from this world",
       InsufficientFunds: "not enough SOL in your wallet to pay for this",
       WindingDown: "the world is winding down; no new life is sold or rewarded",
       RecoveryIsOperator: "the recovery address must not be the operator",
@@ -462,6 +554,10 @@ function handler(ctx: WorldContext) {
             // where a mirror reads the epoch commitment in the raw World
             // account, so VERIFIED means the chain agrees, not this server
             world: ctx.chain.worldLayout,
+            // the brain and the cage the site draws: every neuron of the
+            // MaleCNS connectome, every connection of five or more synapses
+            nodes: ctx.engine.nodeCount, edges: ctx.engine.edgeCount, roleCounts: roleCountsOf(ctx.engine),
+            groups: ROLE_GROUPS, arena: ctx.arena,
           });
         }
         if (route === "/api/collection.json") {
@@ -469,8 +565,8 @@ function handler(ctx: WorldContext) {
           res.setHeader("cache-control", "public, max-age=3600");
           return json(200, {
             name: "Instar", symbol: "INSTAR",
-            description: "Instar: a dish of Drosophila melanogaster first-instar larvae, each run on the Winding et al. 2023 larval connectome. " +
-              "Every larva is one asset in this collection; its owner is its keeper, and the asset is burned when it dies.",
+            description: "Instar: a cage of adult male Drosophila melanogaster, each run on every neuron of the Janelia MaleCNS v1.0 connectome and every connection of five or more synapses. " +
+              "Every fly is one asset in this collection; its owner is its keeper, and the asset is burned when it dies.",
             image: `${ctx.publicUrl}/mark.svg`,
             external_url: `${ctx.publicUrl}/`,
             properties: { files: [{ uri: `${ctx.publicUrl}/mark.svg`, type: "image/svg+xml" }], category: "image" },
@@ -478,11 +574,15 @@ function handler(ctx: WorldContext) {
         }
         if (route === "/api/state") {
           const e = ctx.engine;
+          const alive = e.alive, pose = e.pose;
+          let flying = 0, walking = 0;
+          for (let s = 0; s < e.maxPop; s++) if (alive[s]) { if (pose[s * e.poseLen + POSE.MODE]) flying++; else walking++; }
           return json(200, {
-            tick: ctx.tick(), population: e.popCount, maxGen: e.maxGeneration, capacity: ctx.capacity(),
-            epoch: ctx.lastEpoch(), light: e.sim.light_now(), temp: e.sim.temp_now(), pendingOps: ctx.ops.length,
+            tick: ctx.tick(), population: e.popCount, flying, walking, maxGen: e.maxGeneration, capacity: ctx.capacity(),
+            epoch: ctx.lastEpoch(), light: e.light, temp: e.temp, pendingOps: ctx.ops.length,
           });
         }
+        if (route === "/api/stream") return openStream(req, res);
         if (route === "/api/health") {
           const h = await health();
           res.setHeader("cache-control", "no-cache");
@@ -495,7 +595,7 @@ function handler(ctx: WorldContext) {
           if (!ctx.adminToken) return json(404, { error: "no such route" });
           const q = new URL(url, "http://x").searchParams.get("token") ?? undefined;
           if (!adminAuthorized(q ?? bearer(req))) return json(403, { error: "forbidden" });
-          const tgz = backupArchive();
+          const tgz = await backupArchive();
           const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
           res.setHeader("content-type", "application/gzip");
           res.setHeader("content-disposition", `attachment; filename="instar-${ctx.cluster}-${stamp}.tgz"`);
@@ -516,50 +616,81 @@ function handler(ctx: WorldContext) {
           return;
         }
         if (route === "/api/snapshot") {
-          // join the world instantly instead of replaying it
-          const now = Date.now();
-          if (!snapCache || now - snapCache.at > SNAPSHOT_CACHE_MS) {
-            const meta = Buffer.from(JSON.stringify(ctx.snapshotMeta()));
-            const len = Buffer.alloc(4); len.writeUInt32LE(meta.length, 0);
-            snapCache = { gz: zlib.gzipSync(Buffer.concat([len, meta, ctx.engine.snapshot()]), { level: 6 }), at: now };
+          // The verifiers' starting point, streamed: the newest image on
+          // disk (the five-minute one or the latest pre-boundary one), or
+          // with ?epoch=N the retained pre-boundary image of that epoch. The
+          // public route never triggers a copy or a gzip; only the admin
+          // token asks for a fresh five-minute image, as /api/backup does.
+          const params = new URL(url, "http://x").searchParams;
+          let file: string;
+          if (params.has("epoch")) {
+            const epoch = Number(params.get("epoch"));
+            const f = Number.isInteger(epoch) ? ctx.snapshotEpochFile(epoch) : null;
+            if (!f) return json(404, { error: `no image retained for epoch ${params.get("epoch")}; retained: ${ctx.snapshotEpochs().join(", ") || "none"}` });
+            file = f;
+          } else if (adminAuthorized(params.get("token") ?? bearer(req))) {
+            file = await ctx.snapshotFile(SNAPSHOT_REFRESH_MS);
+          } else {
+            file = await ctx.latestSnapshotFile();
           }
           res.setHeader("content-type", "application/octet-stream");
           res.setHeader("content-encoding", "gzip");
           res.setHeader("cache-control", "no-cache");
+          res.setHeader("content-length", String(fs.statSync(file).size));
           res.writeHead(200);
-          res.end(snapCache.gz);
+          fs.createReadStream(file).pipe(res);
           return;
         }
-        const larva = /^\/api\/larva\/(\d+)\.(svg|json)$/.exec(route);
-        if (larva) {
-          const id = Number(larva[1]);
-          const c = ctx.larvae().find(x => x.id === id);
-          const eng = ctx.engineLarva(id);
-          if (!c && !eng) return json(404, { error: `no larva ${id}` });
+        const fired = /^\/api\/fly\/(\d+)\/fired$/.exec(route);
+        if (fired) {
+          // the brain window's raster: bit k = fired flag of node k*stride at
+          // the latest tick, LSB first, for a fly that is alive right now
+          const eng = ctx.engineFly(Number(fired[1]));
+          if (!eng) return json(404, { error: `fly ${fired[1]} is not in the cage` });
+          const stride = Number(new URL(url, "http://x").searchParams.get("stride") ?? 4);
+          if (!Number.isInteger(stride) || stride < 1 || stride > FIRED_STRIDE_MAX) return json(400, { error: `stride must be 1..${FIRED_STRIDE_MAX}` });
+          const flags = ctx.engine.firedOf(eng.slot);
+          const n = Math.ceil(flags.length / stride);
+          const bits = Buffer.alloc(Math.ceil(n / 8));
+          for (let k = 0; k < n; k++) if (flags[k * stride]) bits[k >> 3] |= 1 << (k & 7);
+          res.setHeader("content-type", "application/octet-stream");
+          res.setHeader("cache-control", "no-cache");
+          res.writeHead(200);
+          res.end(bits);
+          return;
+        }
+        const fly = /^\/api\/fly\/(\d+)\.(svg|json)$/.exec(route);
+        if (fly) {
+          const id = Number(fly[1]);
+          const c = ctx.flies().find(x => x.id === id);
+          const eng = ctx.engineFly(id);
+          if (!c && !eng) return json(404, { error: `no fly ${id}` });
           const generation = c?.generation ?? eng!.generation;
           const genomeHash = c && /[1-9a-f]/.test(c.genomeHash) ? c.genomeHash : eng?.genomeHash ?? c!.genomeHash;
           const status = c ? STATUS_NAME[c.status] : "unregistered";
           res.setHeader("cache-control", "public, max-age=60");
-          if (larva[2] === "svg") {
+          if (fly[2] === "svg") {
             res.setHeader("content-type", "image/svg+xml");
             res.writeHead(200);
-            res.end(larvaSvg({ id, genomeHash, generation, status }));
+            res.end(flySvg({ id, genomeHash, generation, status }));
             return;
           }
-          const image = `${ctx.publicUrl}/api/larva/${id}.svg`;
+          const image = `${ctx.publicUrl}/api/fly/${id}.svg`;
           const parentId = c ? c.parentId : ctx.store.journal.parents[id] ?? -1;
+          // `name` matches the on-chain asset the program mints (Instar #id);
+          // the description is where the animal is named
           return json(200, {
             name: `Instar #${id}`, symbol: "INSTAR",
-            description: `A Drosophila melanogaster first-instar larva in the Instar world, driven by the Winding et al. 2023 larval connectome. Generation ${generation}. Status: ${status}.`,
+            description: `Instar fly #${id}: an adult male Drosophila melanogaster in the Instar cage, driven by every neuron of the Janelia MaleCNS v1.0 connectome and every connection of five or more synapses. Generation ${generation}. Status: ${status}.`,
             image,
-            external_url: `${ctx.publicUrl}/dish.html#larva=${id}`,
+            external_url: `${ctx.publicUrl}/cage.html#fly=${id}`,
             attributes: [
               { trait_type: "Generation", value: generation },
               { trait_type: "Status", value: status },
               { trait_type: "Parent", value: parentId >= 0 ? parentId : "founder" },
               ...(c ? [{ trait_type: "Birth tick", value: c.birthTick }] : []),
               { trait_type: "Genome hash", value: genomeHash },
-              { trait_type: "Species", value: "Drosophila melanogaster (L1)" },
+              { trait_type: "Species", value: "Drosophila melanogaster (adult male)" },
             ],
             properties: { files: [{ uri: image, type: "image/svg+xml" }], category: "image" },
           });

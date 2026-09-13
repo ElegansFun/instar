@@ -1,13 +1,13 @@
 # $INSTAR
 
-`$INSTAR` is a pump.fun coin whose creator fees feed the dish. That is the
+`$INSTAR` is a pump.fun coin whose creator fees feed the cage. That is the
 whole of it. It confers nothing: no governance, no access, no share of
 anything, no promise that it will be worth more tomorrow than today, and the
-engine never reads it. Buying it does not buy a larva. What it does is this:
+engine never reads it. Buying it does not buy a fly. What it does is this:
 every trade of it, on the bonding curve and afterwards on PumpSwap, pays a
 creator fee, and the creator is a keypair whose only job is to pass what it
-receives into the world's two treasuries. More trading means a bigger dish
-and bigger epoch rewards; no trading means nothing, and the dish carries on
+receives into the world's two treasuries. More trading means a bigger cage
+and bigger epoch rewards; no trading means nothing, and the cage carries on
 regardless.
 
 This document is the procedure and the mechanism, with the caveats where
@@ -56,12 +56,12 @@ the field is the fee keypair.
 Why holder rewards and cashback are off: a holder-reward coin sets the
 creator to the `["holder-rewards", mint]` PDA permanently, so no creator
 fee is ever paid to a wallet; cashback rebates part of the fee to traders.
-Both take the income away from the dish.
+Both take the income away from the cage.
 
 **Name, ticker, description, socials.** Name `Instar`, ticker `INSTAR`.
 The description should say what this document says: the creator fees of
-this coin feed the Instar dish; the coin has no other utility and promises
-no value. Link the world's public URL (the site shows the dish, the larvae
+this coin feed the Instar cage; the coin has no other utility and promises
+no value. Link the world's public URL (the site shows the cage, the flies
 and the treasuries live). Metadata is a JSON `{name, symbol, description,
 image, showName, createdOn: "https://pump.fun", website, twitter?,
 telegram?}` pinned to IPFS; the UI does this for you, `create_v2` needs the
@@ -69,7 +69,7 @@ telegram?}` pinned to IPFS; the UI does this for you, `create_v2` needs the
 
 **Initial buy.** Optional. A small buy at launch (a fraction of a SOL) is
 common practice on pump.fun and can be appended to the launch transaction
-(`buy_v2`); the tokens go to the launch wallet. The dish gains nothing from
+(`buy_v2`); the tokens go to the launch wallet. The cage gains nothing from
 it, and a large one only looks like an insider position. Whatever the
 launch wallet holds, it holds as an ordinary trader.
 
@@ -190,19 +190,19 @@ the pool, both vaults and the last claim; `claim --dry-run` prints every
 account of every transaction with its flags and the discriminator and
 simulates them without sending; `claim --yes` sends.
 
-## 4. How they enter the dish
+## 4. How they enter the cage
 
 `fund(amount, pool_bps)` on the Instar program moves lamports from the payer
 into the World account and books `pool_bps` of them to the pool and the rest
 to metabolism. The sweep uses 5000: half to each.
 
-- **Metabolism** is carrying capacity: the dish holds
-  `8 + 20 × (metabolism in SOL)` larvae, up to 48. It is never spent by the
+- **Metabolism** is carrying capacity: the cage holds
+  `8 + 20 × (metabolism in SOL)` flies, up to 48. It is never spent by the
   engine.
-- **The pool** pays every living larva each eighth epoch: 25% of it, divided
-  by how each larva actually lived, credited to their vaults. A larva's
+- **The pool** pays every living fly each eighth epoch: 25% of it, divided
+  by how each fly actually lived, credited to their vaults. A fly's
   vault is its keeper's money on the way out, so fee income ends up in the
-  hands of whoever keeps larvae that live well.
+  hands of whoever keeps flies that live well.
 
 `fund` is permissionless and anyone may call it from any wallet at any time.
 It does not run in wind-down.
@@ -257,7 +257,7 @@ more moving parts and a partner in the loop. Not chosen.
 **Raydium LaunchLab** has a creator fee before graduation and a
 platform-dependent one after; not investigated further.
 
-**Launching nothing.** Also fine. The dish is funded by births and resales
+**Launching nothing.** Also fine. The cage is funded by births and resales
 and runs the same with or without the coin; `INSTAR_COIN_MINT` unset means
 the world sweeps the fee keypair (should anything be sent to it) and claims
 nothing.

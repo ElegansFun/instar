@@ -10,7 +10,8 @@ export type Entry = { name: string; data: Buffer; mtime: number };
 /// What a backup holds, in copy order: the snapshot before the journal. The
 /// world only resumes from a snapshot no newer than the journal, so that
 /// order is the one that always restores by resuming rather than replaying.
-export const BACKUP_FILES = ["snapshot.bin", "journal.json", "journal.json.bak", "accounts.json", "accounts.json.bak", "sessions.json", "genesis.lock", "accounts.json.unreadable.json"];
+/// The snapshot is the world's gzip image (~0.6 GB of engine memory raw).
+export const BACKUP_FILES = ["snapshot.bin.gz", "journal.json", "journal.json.bak", "accounts.json", "accounts.json.bak", "sessions.json", "genesis.lock", "accounts.json.unreadable.json"];
 const BLOCK = 512;
 
 function octal(n: number, width: number): Buffer {
@@ -75,6 +76,12 @@ export function unpack(tar: Buffer): Entry[] {
 
 export function gzipArchive(entries: Entry[]): Buffer {
   return zlib.gzipSync(pack(entries), { level: 6 });
+}
+
+/// For the world process: the compression runs on the threadpool so the
+/// world keeps ticking. Level 1, since the snapshot inside is already gzip.
+export function gzipArchiveAsync(entries: Entry[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => zlib.gzip(pack(entries), { level: 1 }, (e, out) => e ? reject(e) : resolve(out)));
 }
 
 export function gunzipArchive(tgz: Buffer): Entry[] {
