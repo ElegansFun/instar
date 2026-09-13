@@ -59,7 +59,9 @@ const collectionInfo = await rpc.getAccountInfo(new PublicKey(cfg.collection), "
 assert.ok(collectionInfo?.owner.equals(MPL_CORE), `config.collection ${cfg.collection} is not a Core account`);
 const collectionMeta = (await get("/api/collection.json")).json;
 assert.equal(collectionMeta.name, "Instar"); assert.equal(collectionMeta.symbol, "INSTAR");
-assert.ok((await fetch(collectionMeta.image)).ok, `collection image ${collectionMeta.image}`);
+// metadata URLs carry the world's PUBLIC_URL; fetch the file through the host this script reached
+assert.ok(collectionMeta.image.startsWith(cfg.publicUrl), `collection image ${collectionMeta.image} is under ${cfg.publicUrl}`);
+assert.ok((await fetch(BASE + collectionMeta.image.slice(cfg.publicUrl.length))).ok, "collection image served");
 ok(`/api/config collection ${cfg.collection.slice(0, 8)} is a Core account; /api/collection.json served`);
 
 const journal0 = (await get("/api/journal")).json;
@@ -132,15 +134,17 @@ let asset = await assetOnChain(rec.asset);
 assert.equal(asset.owner.toBase58(), a1.wallet, "the Core asset's owner is the buyer's custodial wallet");
 assert.equal(asset.collection?.toBase58(), cfg.collection);
 assert.equal(asset.name, `Instar #${id}`);
-assert.equal(asset.uri, `${BASE}/api/larva/${id}.json`);
-ok(`asset ${rec.asset.slice(0, 8)} owned by ${u1}'s wallet on chain, in the collection, uri -> this world`);
+// the URI is baked at birth from the world's PUBLIC_URL, which need not be
+// the address this script reached the world by
+assert.equal(asset.uri, `${cfg.publicUrl}/api/larva/${id}.json`);
+ok(`asset ${rec.asset.slice(0, 8)} owned by ${u1}'s wallet on chain, in the collection, uri -> ${cfg.publicUrl}`);
 
 const meta = (await get(`/api/larva/${id}.json`)).json;
 assert.equal(meta.name, `Instar #${id}`); assert.equal(meta.symbol, "INSTAR");
-assert.equal(meta.image, `${BASE}/api/larva/${id}.svg`);
+assert.equal(meta.image, `${cfg.publicUrl}/api/larva/${id}.svg`);
 assert.deepEqual(meta.properties, { files: [{ uri: meta.image, type: "image/svg+xml" }], category: "image" });
 assert.ok(Array.isArray(meta.attributes) && meta.attributes.some((t: any) => t.trait_type === "Generation" && t.value === rec.generation));
-const svg = await fetch(meta.image);
+const svg = await fetch(`${BASE}/api/larva/${id}.svg`);
 assert.equal(svg.headers.get("content-type"), "image/svg+xml");
 assert.ok((await svg.text()).startsWith("<svg"));
 ok("larva metadata is Metaplex-shaped; portrait served");

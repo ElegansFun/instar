@@ -64,7 +64,7 @@ world already exist and who owns them, the engine, the site files and the
 role maps. It sends nothing. Every line must read `ok` or `next`.
 
 - [ ] `npm run sim:build` passes its gates on the engine you are about to ship
-- [ ] `npm run program:test`: 31 passing, including both recovery drills
+- [ ] `npm run program:test`: 36 passing, including both recovery drills
 - [ ] `npm run verify` against a scratch validator, `npm run journey` against a local world
 - [ ] a devnet rehearsal (below) has run for at least a day with epochs verifying from a browser
 - [ ] `.keys/mainnet/` and `.keys/instar-program.json` are backed up offline
@@ -137,7 +137,7 @@ volume (never bake them into the image):
 | `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container |
 | `INSTAR_MASTER_KEY` | 32 random bytes as hex; encrypts custodial wallets at rest. REQUIRED on mainnet-beta: the world refuses to start without it (on localnet/devnet it defaults to a key derived from the operator key, which would lock every keeper out if the operator key were rotated or lost). Keep it separately from the operator key |
 | `DATA_DIR` | a persistent volume (`/data`); journal, snapshot, accounts and sessions live here |
-| `PUBLIC_URL` | the public origin: written into every larva's NFT as its metadata URI at birth, and into the collection at `init_world` |
+| `PUBLIC_URL` | the public origin: written into every larva's NFT as its metadata URI at birth, and into the collection at `init_world`. Fix it before the first birth and never change it; a moved host keeps serving under the same domain, or older NFTs point at a dead address |
 | `INSTAR_GAS_RESERVE` | SOL the operator keeps for fees before it pauses settlement (default 0.05) |
 | `GOOGLE_CLIENT_ID` | optional; enables Google sign-in |
 | `INSTAR_FRESH` | `1` once, on the very first boot against this program; remove afterwards |

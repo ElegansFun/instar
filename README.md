@@ -68,13 +68,14 @@ state this run on every build (`docs/PROGRAM.md`).
 | Path | What it is |
 |---|---|
 | `sim/` | The engine. Integer-only deterministic Rust, one crate for WASM and native. Same seed, same dish, bit for bit. |
-| `program/` | The Anchor program: registry, market, treasuries, epoch commitments, recovery. |
-| `services/world/` | The world process: hosts the engine, journals every input, commits a state hash each epoch, settles births, deaths and rewards, serves the site and a custodial-wallet API. |
-| `services/chain/` | `solana.mts`, the only module that touches the chain, plus the program IDL. |
-| `site/` | The dish, rendered: agar, yeast, pools, larvae from the engine's own state, the market and the census. Runs the same engine in the browser and verifies every posted epoch hash. |
+| `program/` | The Anchor program: registry, market, treasuries, epoch commitments, recovery; every larva a Metaplex Core NFT in the world's collection. |
+| `services/world/` | The world process: hosts the engine, journals every input, commits a state hash each epoch, settles births, deaths and rewards, claims the coin's fees, serves the site and the custodial-account API. |
+| `services/chain/` | `solana.mts` (the only module that signs on the server), `fees.mts` (pump.fun creator-fee claims), the program IDL. |
+| `site/` | The dish, rendered as a petri dish from the engine's own state; the market; the census. Runs the same engine in the browser and verifies every posted epoch hash against the World account. Custodial accounts or your own wallet. |
+| `scripts/` | Build, probes, deploy, preflight, operator CLI, backups, fee claims, verification. |
 | `data/canonical/` | The connectome, converted and Merkle-rooted. This is the file that gets hashed. |
 | `tools/census/` | The converter and verifier. Python standard library only. |
-| `docs/` | The program, the economy, the schema, the licence position, going live. |
+| `docs/` | The program, the economy, the coin, the schema, the licence position, going live, running it afterwards. |
 
 ## Running it
 
@@ -91,7 +92,7 @@ npm run world              # the world, on http://localhost:8787
 Verifying it, all against real validators rather than mocks:
 
 ```bash
-npm run program:test       # the program: 31 flows, splits to the lamport, both recovery drills
+npm run program:test       # the program: 36 flows, splits to the lamport, both recovery drills
 npm run localnet -- 8999   # a scratch validator for the next line
 INSTAR_RPC=http://127.0.0.1:8999 npm run verify   # the chain module the world uses
 npm run journey            # the API a person uses: sign up, buy, list, transfer, cash out
@@ -102,7 +103,10 @@ npm run census:verify      # the Merkle root of the connectome file
 Going live: `docs/MAINNET.md`. In short: `npm run keys:new -- .keys/mainnet
 --program` mints every key, `npm run preflight` proves the machine, the keys,
 the artifact and the cluster agree before a lamport moves, and `npm run
-program:deploy` deploys and creates the world in one run.
+program:deploy` deploys and creates the world in one run. The coin and its
+fees: `docs/COIN.md`. Day two: `docs/OPERATIONS.md` (`npm run operator`,
+`npm run backup`, `npm run fees`). The container Railway runs is the
+`Dockerfile`; `scripts/wsl-docker.sh` builds and smoke-runs it locally.
 
 
 ## Licence position
