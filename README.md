@@ -98,7 +98,11 @@ npm run roles:check        # the three role maps (engine host, browser, probes) 
 npm run census:verify      # the Merkle root of the connectome file
 ```
 
-Going live: `docs/MAINNET.md`.
+Going live: `docs/MAINNET.md`. In short: `npm run keys:new -- .keys/mainnet
+--program` mints every key, `npm run preflight` proves the machine, the keys,
+the artifact and the cluster agree before a lamport moves, and `npm run
+program:deploy` deploys and creates the world in one run.
+
 
 ## Licence position
 

@@ -70,6 +70,12 @@ type Ctx = Awaited<ReturnType<typeof buildWorld>>;
 async function buildWorld() {
   if (!["localnet", "devnet", "mainnet-beta"].includes(CLUSTER)) throw new Error(`INSTAR_CLUSTER must be localnet|devnet|mainnet-beta, not ${CLUSTER}`);
   if (!fs.existsSync(OPERATOR_KEYPAIR)) throw new Error(`no operator keypair at ${OPERATOR_KEYPAIR} (INSTAR_OPERATOR_KEYPAIR)`);
+  // Refuse before touching the chain or any file: custodial wallets must not
+  // be sealed under the operator key, which is the key most likely to rotate.
+  if (CLUSTER === "mainnet-beta" && !/^[0-9a-f]{64}$/i.test(process.env.INSTAR_MASTER_KEY ?? "")) {
+    throw new Error("REFUSING TO START on mainnet-beta without INSTAR_MASTER_KEY (64 hex chars): custodial wallets must not be sealed under the operator key. " +
+      "npm run keys:new writes one as master.key; keep it where the operator key is not.");
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
   // ---------- engine ----------
@@ -304,10 +310,6 @@ async function buildWorld() {
   // Without a master key the custody key is derived from the operator key,
   // which is a hot key that gets rotated or leaks: either event would lock
   // every keeper out. That is a localnet/devnet convenience only.
-  if (CLUSTER === "mainnet-beta" && !process.env.INSTAR_MASTER_KEY) {
-    throw new Error("REFUSING TO START on mainnet-beta without INSTAR_MASTER_KEY: custodial wallets must not be sealed under the operator key. " +
-      "Set it to 32 random bytes as hex (openssl rand -hex 32) and keep it where the operator key is not.");
-  }
   const masterKey = process.env.INSTAR_MASTER_KEY
     ? Buffer.from(process.env.INSTAR_MASTER_KEY, "hex")
     : crypto.createHash("sha256").update(Buffer.concat([operator.secretKey, Buffer.from("|instar-custody-v1")])).digest();

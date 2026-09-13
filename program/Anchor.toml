@@ -6,13 +6,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+instar = "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM"
 
 [programs.devnet]
-instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+instar = "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM"
 
 [programs.mainnet]
-instar = "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+instar = "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM"
 
 [registry]
 url = "https://api.apr.dev"

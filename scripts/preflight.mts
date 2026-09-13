@@ -1,0 +1,131 @@
+// Everything that must be true before a public deployment, checked, not
+// assumed. Run from Windows:
+//   INSTAR_CLUSTER=mainnet-beta INSTAR_DEPLOYER_KEYPAIR=.keys/mainnet/operator.json \
+//   INSTAR_RECOVERY=<pubkey> INSTAR_MASTER_KEY=<hex> [INSTAR_RPC=...] npx tsx scripts/preflight.mts
+//
+// Exits 0 only if every line is "ok". Lines marked "next" are steps that have
+// not happened yet but are not wrong (program not deployed, world not
+// initialised): they tell you what the next command will do. Nothing here
+// sends a transaction.
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Chain, PUBLIC_RPC, formatSol, loadKeypair, type Cluster } from "../services/chain/solana.mts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const cluster = (process.env.INSTAR_CLUSTER ?? "localnet") as Cluster;
+const rpc = process.env.INSTAR_RPC ?? PUBLIC_RPC[cluster];
+const publicCluster = cluster !== "localnet";
+let failed = 0;
+const ok = (what: string) => console.log(`  ok    ${what}`);
+const next = (what: string) => console.log(`  next  ${what}`);
+const bad = (what: string) => { failed++; console.log(`  FAIL  ${what}`); };
+
+console.log(`preflight for ${cluster} (${rpc})`);
+
+// ---- the artifact ------------------------------------------------------------
+const so = path.join(root, "program/target/deploy/instar.so");
+const featuresFile = path.join(root, "program/target/deploy/instar.features");
+if (!fs.existsSync(so)) bad("program/target/deploy/instar.so missing: npm run program:build");
+else {
+  const features = fs.existsSync(featuresFile) ? fs.readFileSync(featuresFile, "utf8").trim() : "unknown";
+  if (features === "default") ok(`artifact is the real-timer build (${(fs.statSync(so).size / 1024).toFixed(0)} KB)`);
+  else bad(`artifact was built with features "${features}"; npm run program:build`);
+}
+
+// ---- the program identity ----------------------------------------------------
+const lib = fs.readFileSync(path.join(root, "program/programs/instar/src/lib.rs"), "utf8");
+const declared = lib.match(/declare_id!\("([^"]+)"\)/)?.[1] ?? "";
+const idl = JSON.parse(fs.readFileSync(path.join(root, "services/chain/idl/instar.json"), "utf8"));
+const keep = path.join(root, ".keys/instar-program.json");
+if (!fs.existsSync(keep)) bad(".keys/instar-program.json missing: the program identity");
+else {
+  const kp = loadKeypair(keep).publicKey.toBase58();
+  if (kp === declared && idl.address === declared) ok(`program id ${declared} (keypair, declare_id! and IDL agree)`);
+  else bad(`program id mismatch: keypair ${kp}, declare_id! ${declared}, IDL ${idl.address}`);
+}
+const toml = fs.readFileSync(path.join(root, "program/Anchor.toml"), "utf8");
+const tomlIds = [...toml.matchAll(/^instar = "([^"]+)"/gm)].map((m) => m[1]);
+if (tomlIds.length && tomlIds.every((v) => v === declared)) ok("Anchor.toml program ids agree");
+else bad(`Anchor.toml program ids ${tomlIds.join(", ")} differ from ${declared}`);
+
+// ---- the keys ------------------------------------------------------------------
+const deployerPath = path.resolve(root, process.env.INSTAR_DEPLOYER_KEYPAIR ?? process.env.INSTAR_OPERATOR_KEYPAIR ?? ".keys/operator.json");
+let deployer: Keypair | null = null;
+if (!fs.existsSync(deployerPath)) bad(`deployer/operator keypair missing: ${deployerPath}`);
+else { deployer = loadKeypair(deployerPath); ok(`operator ${deployer.publicKey.toBase58()} (${path.relative(root, deployerPath)})`); }
+
+let recovery: PublicKey | null = null;
+if (process.env.INSTAR_RECOVERY) {
+  recovery = new PublicKey(process.env.INSTAR_RECOVERY);
+  if (deployer && recovery.equals(deployer.publicKey)) bad("INSTAR_RECOVERY is the operator key; it must be a different wallet");
+  else ok(`recovery ${recovery.toBase58()}`);
+} else if (publicCluster) bad("INSTAR_RECOVERY is not set");
+else next("localnet: init-world.mts writes a throwaway .keys/recovery.json");
+
+const master = process.env.INSTAR_MASTER_KEY ?? "";
+if (/^[0-9a-f]{64}$/i.test(master)) ok("INSTAR_MASTER_KEY is 32 bytes of hex");
+else if (publicCluster) bad("INSTAR_MASTER_KEY must be set (64 hex chars) on a public cluster; scripts/new-keys.mts writes one");
+else next("INSTAR_MASTER_KEY unset: localnet derives one from the operator key");
+
+if (process.env.INSTAR_FEE_KEYPAIR) {
+  const p = path.resolve(root, process.env.INSTAR_FEE_KEYPAIR);
+  if (fs.existsSync(p)) ok(`fee keypair ${loadKeypair(p).publicKey.toBase58()}`); else bad(`INSTAR_FEE_KEYPAIR not found: ${p}`);
+} else next("INSTAR_FEE_KEYPAIR unset: the world will not sweep creator fees until it is");
+
+if (publicCluster && rpc === PUBLIC_RPC[cluster]) next(`using the public RPC ${rpc}; it rate-limits, set INSTAR_RPC to a paid endpoint for a live world`);
+
+// ---- the cluster ---------------------------------------------------------------
+try {
+  const chain = new Chain({ cluster, rpc, operator: deployer ?? Keypair.generate() });
+  const version = await chain.connection.getVersion();
+  ok(`rpc reachable (solana-core ${version["solana-core"]})`);
+  const hash = await chain.connection.getGenesisHash();
+  const known: Record<string, string> = {
+    "mainnet-beta": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+    devnet: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+  };
+  if (known[cluster] && hash !== known[cluster]) bad(`rpc genesis hash ${hash} is not ${cluster}`);
+  else ok(`genesis hash confirms ${cluster}`);
+
+  if (deployer) {
+    const bal = await chain.balance(deployer.publicKey);
+    const rentForProgram = fs.existsSync(so) ? await chain.connection.getMinimumBalanceForRentExemption(fs.statSync(so).size * 2 + 45) : 0;
+    const need = BigInt(rentForProgram) + BigInt(LAMPORTS_PER_SOL) / 2n;
+    const deployed = await chain.connection.getAccountInfo(chain.programId);
+    if (deployed) {
+      ok(`program is deployed at ${chain.programId.toBase58()}`);
+      if (bal >= BigInt(LAMPORTS_PER_SOL) / 10n) ok(`operator holds ${formatSol(bal)} SOL for fees and rent`);
+      else bad(`operator holds ${formatSol(bal)} SOL; keep at least 0.1 SOL for births, epochs and rent`);
+    } else {
+      next(`program not deployed yet: npm run program:deploy (needs about ${formatSol(need)} SOL)`);
+      if (bal >= need) ok(`operator holds ${formatSol(bal)} SOL, enough to deploy`);
+      else bad(`operator holds ${formatSol(bal)} SOL; deploying needs about ${formatSol(need)} SOL`);
+    }
+    if (await chain.worldExists()) {
+      const w = await chain.world();
+      if (w.operator.equals(deployer.publicKey)) ok(`world exists; operator is this key`); else bad(`world exists but its operator is ${w.operator.toBase58()}`);
+      if (recovery && !w.recovery.equals(recovery)) bad(`world recovery is ${w.recovery.toBase58()}, not INSTAR_RECOVERY`);
+      else ok(`world recovery ${w.recovery.toBase58()}`);
+      if (w.windDown) bad("world is winding down"); else ok(`world running: ${w.nextId} born, epoch ${w.lastEpoch}`);
+    } else next("world not initialised yet: program:deploy does it, or npm run world:init");
+  }
+} catch (e: any) {
+  bad(`rpc ${rpc}: ${String(e?.message ?? e).slice(0, 120)}`);
+}
+
+// ---- the engine and the site ------------------------------------------------------
+const wasm = path.join(root, "site/instar_sim.wasm");
+if (fs.existsSync(wasm)) ok(`engine site/instar_sim.wasm (${fs.statSync(wasm).size} bytes)`); else bad("site/instar_sim.wasm missing: npm run sim:build");
+for (const f of ["site/index.html", "site/dish.html", "site/measurements.json", "data/canonical/droso-winding2023-larva.census.json", "services/chain/idl/instar.ts"]) {
+  if (fs.existsSync(path.join(root, f))) ok(f); else bad(`${f} missing`);
+}
+try {
+  execFileSync(process.execPath, [path.join(root, "scripts/roles-check.mjs")], { stdio: "pipe" });
+  ok("the three role maps are identical (roles-check)");
+} catch { bad("roles-check failed: npm run roles:check"); }
+
+console.log(failed ? `\npreflight: ${failed} problem(s)` : "\npreflight: ready");
+process.exit(failed ? 1 : 0);

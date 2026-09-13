@@ -29,15 +29,46 @@ days of silence anyone may call `begin_wind_down`, which opens every exit at
 once. A stranger calling it cannot benefit: `recovery` is fixed at
 `init_world` and cannot change once the world is winding down.
 
-## 1. Before spending anything
+## 1. Keys
+
+```
+npm run keys:new -- .keys/mainnet --program
+```
+
+writes `operator.json` (deployer, upgrade authority, world operator),
+`recovery.json` (where an abandoned world's money goes), `fee.json` (the
+`$INSTAR` creator-fee destination the world sweeps) and `master.key` (seals
+custodial wallets at rest) under `.keys/mainnet/`, and with `--program`
+rotates the program identity (`.keys/instar-program.json`, `declare_id!`,
+`Anchor.toml`), after which `npm run program:test` rebuilds and re-proves the
+program under the new id. It refuses to overwrite anything.
+
+Back the directory up offline before any key holds a lamport. The master key
+and the program keypair have no recovery path. The recovery keypair is the one
+to keep coldest: it is the address every exit points at when everything else
+is gone. Moving `recovery.json` to a hardware wallet and using that address
+instead is better still; only its public key is needed at init.
+
+## 2. Before spending anything
+
+```
+INSTAR_CLUSTER=mainnet-beta INSTAR_DEPLOYER_KEYPAIR=.keys/mainnet/operator.json \
+INSTAR_RECOVERY=<recovery pubkey> INSTAR_MASTER_KEY=<master.key> \
+INSTAR_FEE_KEYPAIR=.keys/mainnet/fee.json npm run preflight
+```
+
+Preflight checks the artifact (real timers), the program identity (keypair,
+`declare_id!`, IDL and `Anchor.toml` agree), every key, the RPC's genesis
+hash, the operator balance against the deploy rent, whether the program and
+world already exist and who owns them, the engine, the site files and the
+role maps. It sends nothing. Every line must read `ok` or `next`.
 
 - [ ] `npm run sim:build` passes its gates on the engine you are about to ship
 - [ ] `npm run program:test`: 31 passing, including both recovery drills
 - [ ] `npm run verify` against a scratch validator, `npm run journey` against a local world
 - [ ] a devnet rehearsal (below) has run for at least a day with epochs verifying from a browser
-- [ ] `.keys/instar-program.json` (the program's identity) and the deployer key are backed up offline
-- [ ] `INSTAR_RECOVERY` is a wallet you control and is **not** the operator key
-- [ ] the deployer wallet holds enough SOL for the program account (about 3 SOL for the 427 KB artifact at current rent) plus fees
+- [ ] `.keys/mainnet/` and `.keys/instar-program.json` are backed up offline
+- [ ] `npm run preflight` on mainnet-beta reports `ready`
 
 ### Devnet rehearsal
 
@@ -61,12 +92,13 @@ World account from `api.devnet.solana.com` itself. Leave it a day; a world that
 survives its own restarts, a stale journal and a rate-limited RPC on devnet is
 the world you deploy.
 
-## 2. Sequence
+## 3. Sequence
 
 ### a. Deploy the program and create the world
 
 ```
-INSTAR_CLUSTER=mainnet-beta INSTAR_RECOVERY=<cold wallet> npm run program:deploy
+INSTAR_CLUSTER=mainnet-beta INSTAR_DEPLOYER_KEYPAIR=.keys/mainnet/operator.json \
+INSTAR_RECOVERY=<recovery pubkey> npm run program:deploy
 ```
 
 One run: it deploys the real-timer artifact (the script refuses a short-timers
@@ -88,7 +120,9 @@ inequality. Confirm `recovery` is your cold wallet before sending anything.
 
 ### c. Start the world
 
-Set on the host (Railway, or anything that runs `npm start`):
+Set on the host (Railway, or anything that runs `npm start`); `.env.mainnet.example`
+is a template. Mount `.keys/mainnet/operator.json` and `fee.json` into the
+volume (never bake them into the image):
 
 | env | value |
 |---|---|
@@ -109,17 +143,17 @@ exist, so a stale journal cannot quietly corrupt it.
 ### d. Launch the token, then feed the dish
 
 Launch `$INSTAR` from a wallet you control, with its creator-fee destination
-set to a keypair you can hand to the world process. Then:
+set to the `fee.json` address from `npm run keys:new`. Then:
 
 | env | value |
 |---|---|
-| `INSTAR_FEE_KEYPAIR` | path to that keypair |
+| `INSTAR_FEE_KEYPAIR` | path to `fee.json` inside the container |
 
 The process sweeps it every ten minutes into `fund(5000)`. `fund` is
 permissionless: anyone can feed the dish from any wallet at any time, and the
 income does not stop when the process does.
 
-## 3. What can go wrong, worst first
+## 4. What can go wrong, worst first
 
 **The operator key is lost.** Covered: 90 days, then anyone opens the exits.
 Before that, `transfer_operator` + `accept_operator` moves the role to a new key

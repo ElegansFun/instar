@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/instar.json`.
  */
 export type Instar = {
-  "address": "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181",
+  "address": "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM",
   "metadata": {
     "name": "instar",
     "version": "0.1.0",
@@ -573,7 +573,7 @@ export type Instar = {
         },
         {
           "name": "program",
-          "address": "APHUkCBn8xAiZw4Yuzf4eZDiv2zfh26Zr5NupxT1J181"
+          "address": "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM"
         },
         {
           "name": "programData"

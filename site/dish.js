@@ -481,6 +481,9 @@ const setHtml = (id, html) => { const el = $(id); if (el.innerHTML !== html) el.
     });
     if (j && j.desynced) { pushPlate("<b>mirror out of step with the journal; reloading</b>"); setTimeout(() => location.reload(), 1200); return; }
     renderWindows();
+    // the frame loop also refreshes the inspector, but a hidden tab has no
+    // frames: a purchase or listing must show up on the next poll regardless
+    updateInspector();
   }
   if (live) { setInterval(poll, 3000); pushPlate(world.joinedAt ? `<b>joined</b> at tick ${fmt(world.joinedAt)} from the world's snapshot; verifying every epoch from here` : `<b>replaying</b> the world from genesis; every epoch will be checked`); }
 
