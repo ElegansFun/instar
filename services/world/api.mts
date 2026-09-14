@@ -538,18 +538,17 @@ function handler(ctx: WorldContext) {
       res.setHeader("vary", "origin");
     }
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-    // link previewers and monitors ask HEAD before GET; Node drops the body itself
-    if (req.method === "HEAD") {
-      if (!url.startsWith("/api/") && serveStatic(url, res)) return;
-      res.writeHead(404); res.end(); return;
-    }
+    // link previewers and monitors ask HEAD before GET: answer like GET (Node
+    // drops the body itself), except the two routes that would stream
+    const head = req.method === "HEAD";
+    if (head && /^\/api\/(stream|snapshot)(\?|$)/.test(url)) { res.writeHead(405); res.end(); return; }
     const json = (status: number, body: unknown) => {
       res.setHeader("content-type", "application/json");
       res.writeHead(status);
       res.end(JSON.stringify(body));
     };
     try {
-      if (req.method === "GET") {
+      if (req.method === "GET" || head) {
         const route = url.split("?")[0];
         if (route === "/api/journal") return json(200, journalView());
         if (route === "/api/config") {
