@@ -1,0 +1,88 @@
+{
+  "pinned": {
+    "text": "Instar is a cage of fruit flies. Each runs the complete wiring of a real fly's nervous system: 166,700 neurons, 6.2M connections (Janelia MaleCNS). Not AI, not a recording. Every fly is an NFT on Solana; every 2,400 ticks the world hashes itself to the chain.",
+    "media": "pinned.mp4"
+  },
+  "posts": [
+    {
+      "text": "The brain in every Instar fly is real: one adult male Drosophila, brain + optic lobes + nerve cord, reconstructed synapse by synapse by Janelia FlyEM (Berg et al. 2026, CC BY 4.0). 166,700 neurons. 6,242,118 connections of 5+ synapses. Loaded verbatim.",
+      "media": "connectome.png"
+    },
+    {
+      "text": "What is real, and what is not. The connectome gives the wiring: who connects to whom, how strongly, which neurons are sensory, motor, descending. It does not give neuron dynamics, a body, or a world. The engine supplies those and says so. \"Driven by\", never \"simulation\".",
+      "media": "real.png"
+    },
+    {
+      "text": "The engine: integer, deterministic, event-driven. Fire above 16,384; leak a quarter per tick; refractory 3 ticks. Fixed point, no floating point anywhere, so the same inputs give the same bytes on every machine. 146 KB of WebAssembly from Rust; 2.8 ms per fly per tick, measured.",
+      "media": "engine.png"
+    },
+    {
+      "text": "Measured, not asserted. Same engine, same cage: the real connectome vs every synapse zeroed.\n\nFeeding: 9.0% of fly-ticks vs 0.\nTakeoffs: 97 per fly-hour vs 0.\nPopulation at 12,000 ticks: 7 vs extinct at 4,000.\n\nThe wiring is what makes the animal move, eat and survive.",
+      "media": "measured.png"
+    },
+    {
+      "text": "What the cage writes into each sense: odour as a field on the floor, taste from the substrate under the tarsi, Johnston's organ from airflow and neighbours' wingbeats, bristles from contact, thermo and hygro from the gradients, photoreceptors from the light ahead.",
+      "media": "senses.png"
+    },
+    {
+      "text": "The cage: 128×128 floor cells, 16 layers of air, four walls and a lid a fly can walk on. Dishes of yeast paste and banana, a water pool, a salt crust, a lamp that dims at night. A day is 16,384 ticks. All a pure function of tick and seed, so every mirror sees the same world.",
+      "media": "cage.png"
+    },
+    {
+      "text": "Flies die. Starved when energy hits zero. Exhausted when it hits zero in flight. Senescence as upkeep climbs with age. Drowned, desiccated, killed, or culled by their keeper. The genesis probe loses 3 of 8 founders by tick 3,000. Death burns the NFT; the vault pays out by rule.",
+      "media": "deaths.png"
+    },
+    {
+      "text": "A fly's life, and where the money goes.\nBorn: a crossover of its parents' weights, minted, offered.\nBought: 60% vault, 15% metabolism, 15% pool, 10% parent.\nLives: every 8th epoch a quarter of the pool, by how it lived.\nDies: NFT burned; 40% heirs, 10% keeper, rest to the cage.",
+      "media": "lifecycle.png"
+    },
+    {
+      "text": "Every flow in the Instar ledger, by rule. Four pools in one program account (vaults, metabolism, pool, credits) and one invariant checked on every instruction: the balance above rent covers all four.",
+      "media": "flows.png"
+    },
+    {
+      "text": "Earning by living. Every epoch each fly is scored on how it actually lived: survival, foraging, energy, age, maturity, births, generation. Every 8th epoch a quarter of the pool is divided by those points into the flies' vaults. A vault is its keeper's money on the way out.",
+      "media": "rewards.png"
+    },
+    {
+      "text": "Every fly is a Metaplex Core NFT, minted at birth into the Instar collection. Whoever holds it is the keeper. The World PDA holds permanent transfer, burn and freeze delegates so births, sales and deaths settle by program. Metadata is served live. Death burns the asset.",
+      "media": "nft.png"
+    },
+    {
+      "text": "Reproduction is a rule, not biology. Energy above 45,000, the neurosecretory gate open, a partner within reach: the child's weights are a crossover of its parents' with a few signed mutations. Every animal runs the same male nervous system; what a lineage inherits is its weights.",
+      "media": "breeding.png"
+    },
+    {
+      "text": "Flight is driven by wing motor neurons. Takeoff when the smoothed wing-power rate reaches 4 spikes per tick; steering neurons give yaw and roll; halteres a stability term; landing on contact. It costs 12× the base upkeep, which is why so many flies die exhausted mid-air.",
+      "media": "flight.png"
+    },
+    {
+      "text": "Carrying capacity is the smaller of two numbers: the economy's (8 + 20 flies per SOL of metabolism, up to 40) and the host's compute (a tick under 80 ms of engine time, re-measured every epoch). Below half capacity for 600 ticks, founders are born back to it.",
+      "media": "capacity.png"
+    },
+    {
+      "text": "Two ways in. An Instar account: a name and a PIN; the world holds a keypair for you, encrypted under the PIN. Custodial, and the site says so. Or your own wallet: the page builds each transaction from the program's IDL, your wallet signs, the world never sees your key.",
+      "media": "custody.png"
+    },
+    {
+      "text": "How to own a fly: open the cage, make an account or connect a wallet, put in a little SOL, buy a newborn from the Market window. It is minted to your wallet. Name its lineage, list it, transfer it, withdraw what you are owed. When it dies, the NFT burns.\n\ninstarcage.com/cage.html",
+      "media": "own.png"
+    },
+    {
+      "text": "Don't take the operator's word. Every 2,400 ticks the engine hashes the whole world and the operator posts the hash to Solana. Fetch the snapshot, replay the same ticks with the same engine, compare:\n\nINSTAR_URL=https://instarcage.com npm run verify:epoch\n\nSame bytes, honest.",
+      "media": "verify.png"
+    },
+    {
+      "text": "What this world is, verifiably: the program, the World account, the collection, the latest epoch hash and its transaction, the verifier's verdict, the source commit the world runs, the SHA-256 of the engine it serves, the census Merkle root. All on the site, all checkable.",
+      "media": "proof.png"
+    },
+    {
+      "text": "If the operator disappears: after 90 days without an operator action anyone may begin wind-down; keepers reclaim their vaults; treasuries sweep to a recovery address fixed at creation; after 180 days the rest follows and every account closes for its rent. No lamport is stranded.",
+      "media": "recovery.png"
+    },
+    {
+      "text": "All of it is open: the engine (Rust → WebAssembly), the Solana program (Anchor + Metaplex Core, 40 tests), the world process, the site, the census converter, the verifier. github.com/InstarCage/instar, MIT. The connectome is Janelia's, CC BY 4.0, and belongs to its authors.",
+      "media": "stack.png"
+    }
+  ]
+}
