@@ -514,11 +514,13 @@ function handler(ctx: WorldContext) {
     const full = path.resolve(base, "." + (isData ? rel.slice("/data/canonical".length) : rel));
     if (full !== base && !full.startsWith(base + path.sep)) return false;
     if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
-    res.setHeader("content-type", MIME[path.extname(full).toLowerCase()] ?? "application/octet-stream");
+    const ext = path.extname(full).toLowerCase();
+    res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
     res.setHeader("cache-control", isData ? "public, max-age=3600" : "no-cache");
     res.setHeader("x-frame-options", "DENY");
     res.writeHead(200);
-    res.end(fs.readFileSync(full));
+    // link previews need absolute URLs and the origin is only known here
+    res.end(ext === ".html" ? fs.readFileSync(full, "utf8").replaceAll("{{PUBLIC_URL}}", ctx.publicUrl) : fs.readFileSync(full));
     return true;
   }
 
@@ -567,9 +569,9 @@ function handler(ctx: WorldContext) {
             name: "Instar", symbol: "INSTAR",
             description: "Instar: a cage of adult male Drosophila melanogaster, each run on every neuron of the Janelia MaleCNS v1.0 connectome and every connection of five or more synapses. " +
               "Every fly is one asset in this collection; its owner is its keeper, and the asset is burned when it dies.",
-            image: `${ctx.publicUrl}/mark.svg`,
+            image: `${ctx.publicUrl}/icon-512.png`,
             external_url: `${ctx.publicUrl}/`,
-            properties: { files: [{ uri: `${ctx.publicUrl}/mark.svg`, type: "image/svg+xml" }], category: "image" },
+            properties: { files: [{ uri: `${ctx.publicUrl}/icon-512.png`, type: "image/png" }, { uri: `${ctx.publicUrl}/mark.svg`, type: "image/svg+xml" }], category: "image" },
           });
         }
         if (route === "/api/state") {

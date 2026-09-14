@@ -1,0 +1,664 @@
+<!doctype html><meta charset="utf-8"><title>Instar brand</title><style>
+@font-face{font-family:"Instrument Serif";src:url(../site/fonts/instrument-serif-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Instrument Serif";font-style:italic;src:url(../site/fonts/instrument-serif-latin-400-italic.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";src:url(../site/fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-weight:500;src:url(../site/fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2")}
+body{margin:0;background:#888;font-family:"Instrument Serif",Georgia,serif;color:#141311}
+[data-asset]{position:relative;overflow:hidden;background:#F3EEE3;margin:24px;box-sizing:border-box}
+.serif{font-family:"Instrument Serif",Georgia,serif;font-weight:400;letter-spacing:-0.01em;line-height:0.98}
+.mono{font-family:"IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:0.14em;color:#4A4640}
+.rule{position:absolute;left:0;right:0;height:1px;background:rgba(20,19,17,.55)}
+.cap{position:absolute;font-family:"IBM Plex Mono",monospace;color:#4A4640}
+</style>
+
+<!-- profile picture: the plate fly on paper; everything important inside the circle X crops to -->
+<div data-asset="pfp-1024" style="width:1024px;height:1024px">
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+    <div style="width:720px;height:720px"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="16 16 268 222" width="100%" height="100%">
+  <title>Drosophila melanogaster, adult male, dorsal</title>
+  <defs>
+    <g id="wing-1" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="2.40"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="1.28"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="1.28"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="1.28"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="1.28"/>
+      <path d="M48 -15 L 47 -7" stroke-width="1.28"/>
+      <path d="M86 -10 L 84 4" stroke-width="1.28"/>
+    </g>
+    <g id="half-1" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M214 54 L 232 30" stroke-width="2.56"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M234 128 L 262 142" stroke-width="2.56"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="4.16"/>
+      <path d="M206 190 L 216 222" stroke-width="2.56"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="1.76"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="2.24"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-1" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="2.24"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="1.44"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="2.40"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="0.96" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-1" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-1" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-1"/>
+  <use xlink:href="#half-1" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="3.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="1.92"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="1.92"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="1.92"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="1.92"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="1.92"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="1.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="1.76"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="2.08"/>
+  </g>
+  <use xlink:href="#front-1"/>
+  <use xlink:href="#front-1" transform="translate(300 0) scale(-1 1)"/>
+</svg>
+</div>
+  </div>
+</div>
+
+<!-- X header 1500x500: safe area is the middle; the profile picture covers the bottom-left corner -->
+<div data-asset="banner-x-1500x500" style="width:1500px;height:500px">
+  <div class="mono" style="position:absolute;left:100px;top:64px;font-size:18px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; Solana</div>
+  <div style="position:absolute;left:96px;top:118px;width:900px">
+    <div class="serif" style="font-size:96px">A cage of flies,<br>each driven by a complete<br><i>wiring diagram.</i></div>
+  </div>
+  <div style="position:absolute;right:56px;top:-6px;width:520px;height:520px;transform:rotate(-8deg)"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="16 16 268 222" width="100%" height="100%">
+  <title>Drosophila melanogaster, adult male, dorsal</title>
+  <defs>
+    <g id="wing-2" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="1.50"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="0.80"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="0.80"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="0.80"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="0.80"/>
+      <path d="M48 -15 L 47 -7" stroke-width="0.80"/>
+      <path d="M86 -10 L 84 4" stroke-width="0.80"/>
+    </g>
+    <g id="half-2" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="2.60"/>
+      <path d="M214 54 L 232 30" stroke-width="1.60"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="2.60"/>
+      <path d="M234 128 L 262 142" stroke-width="1.60"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="2.60"/>
+      <path d="M206 190 L 216 222" stroke-width="1.60"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="1.10"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="1.40"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-2" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="1.40"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="0.90"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="1.50"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="0.60" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-2" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-2" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-2"/>
+  <use xlink:href="#half-2" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="2.00" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="1.20"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="1.20"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="1.20"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="1.20"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="1.20"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="1.00"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="1.10"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="1.30"/>
+  </g>
+  <use xlink:href="#front-2"/>
+  <use xlink:href="#front-2" transform="translate(300 0) scale(-1 1)"/>
+</svg>
+</div>
+</div>
+
+<!-- link preview / Open Graph 1200x630 -->
+<div data-asset="og-1200x630" style="width:1200px;height:630px">
+  <div style="position:absolute;left:72px;top:64px;display:flex;align-items:center;gap:18px">
+    <div style="width:56px;height:56px"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64" width="64" height="64">
+  <title>Instar</title>
+  <g id="m-3">
+  <circle cx="32" cy="32" r="29.5" fill="none" stroke="#141311" stroke-width="1.50"/>
+  <circle cx="32" cy="32" r="26.0" fill="none" stroke="#141311" stroke-width="0.50"/>
+  <g transform="translate(4.07 8.45) scale(0.1862)">
+  <defs>
+    <g id="wing-3" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="3.90"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="2.08"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="2.08"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="2.08"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="2.08"/>
+      <path d="M48 -15 L 47 -7" stroke-width="2.08"/>
+      <path d="M86 -10 L 84 4" stroke-width="2.08"/>
+    </g>
+    <g id="half-3" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="6.76"/>
+      <path d="M214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="6.76"/>
+      <path d="M234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="6.76"/>
+      <path d="M206 190 L 216 222" stroke-width="4.16"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="2.86"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="3.64"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-3" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="3.64"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="2.34"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="3.90"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="1.56" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-3" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-3" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-3"/>
+  <use xlink:href="#half-3" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="5.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="3.12"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="3.12"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="3.12"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="3.12"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="3.12"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="2.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="2.86"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="3.38"/>
+  </g>
+  <use xlink:href="#front-3"/>
+  <use xlink:href="#front-3" transform="translate(300 0) scale(-1 1)"/>
+
+  </g>
+  </g>
+</svg>
+</div>
+    <div class="serif" style="font-size:44px">Instar</div>
+  </div>
+  <div class="rule" style="top:140px;left:72px;right:72px"></div>
+  <div style="position:absolute;left:72px;top:190px;width:760px">
+    <div class="serif" style="font-size:78px">A cage of flies,<br>each driven by a complete<br><i>wiring diagram.</i></div>
+  </div>
+  <div class="mono" style="position:absolute;left:72px;bottom:56px;font-size:16px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; every fly a Core NFT on Solana</div>
+  <div style="position:absolute;right:40px;top:120px;width:470px;height:470px;transform:rotate(-8deg)"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="16 16 268 222" width="100%" height="100%">
+  <title>Drosophila melanogaster, adult male, dorsal</title>
+  <defs>
+    <g id="wing-4" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="1.50"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="0.80"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="0.80"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="0.80"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="0.80"/>
+      <path d="M48 -15 L 47 -7" stroke-width="0.80"/>
+      <path d="M86 -10 L 84 4" stroke-width="0.80"/>
+    </g>
+    <g id="half-4" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="2.60"/>
+      <path d="M214 54 L 232 30" stroke-width="1.60"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="2.60"/>
+      <path d="M234 128 L 262 142" stroke-width="1.60"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="2.60"/>
+      <path d="M206 190 L 216 222" stroke-width="1.60"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="1.10"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="1.40"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-4" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="1.40"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="0.90"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="1.50"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="0.60" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-4" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-4" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-4"/>
+  <use xlink:href="#half-4" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="2.00" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="1.20"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="1.20"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="1.20"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="1.20"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="1.20"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="1.00"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="1.10"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="1.30"/>
+  </g>
+  <use xlink:href="#front-4"/>
+  <use xlink:href="#front-4" transform="translate(300 0) scale(-1 1)"/>
+</svg>
+</div>
+</div>
+
+<!-- square social card 1080x1080 (Telegram, pump.fun, posts) -->
+<div data-asset="card-1080" style="width:1080px;height:1080px">
+  <div style="position:absolute;left:72px;top:64px;display:flex;align-items:center;gap:18px">
+    <div style="width:56px;height:56px"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64" width="64" height="64">
+  <title>Instar</title>
+  <g id="m-5">
+  <circle cx="32" cy="32" r="29.5" fill="none" stroke="#141311" stroke-width="1.50"/>
+  <circle cx="32" cy="32" r="26.0" fill="none" stroke="#141311" stroke-width="0.50"/>
+  <g transform="translate(4.07 8.45) scale(0.1862)">
+  <defs>
+    <g id="wing-5" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="3.90"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="2.08"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="2.08"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="2.08"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="2.08"/>
+      <path d="M48 -15 L 47 -7" stroke-width="2.08"/>
+      <path d="M86 -10 L 84 4" stroke-width="2.08"/>
+    </g>
+    <g id="half-5" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="6.76"/>
+      <path d="M214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="6.76"/>
+      <path d="M234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="6.76"/>
+      <path d="M206 190 L 216 222" stroke-width="4.16"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="2.86"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="3.64"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-5" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="3.64"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="2.34"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="3.90"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="1.56" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-5" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-5" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-5"/>
+  <use xlink:href="#half-5" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="5.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="3.12"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="3.12"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="3.12"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="3.12"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="3.12"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="2.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="2.86"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="3.38"/>
+  </g>
+  <use xlink:href="#front-5"/>
+  <use xlink:href="#front-5" transform="translate(300 0) scale(-1 1)"/>
+
+  </g>
+  </g>
+</svg>
+</div>
+    <div class="serif" style="font-size:44px">Instar</div>
+  </div>
+  <div class="rule" style="top:140px;left:72px;right:72px"></div>
+  <div style="position:absolute;left:0;right:0;top:160px;display:flex;justify-content:center">
+    <div style="width:560px;height:560px"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="16 16 268 222" width="100%" height="100%">
+  <title>Drosophila melanogaster, adult male, dorsal</title>
+  <defs>
+    <g id="wing-6" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="1.50"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="0.80"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="0.80"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="0.80"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="0.80"/>
+      <path d="M48 -15 L 47 -7" stroke-width="0.80"/>
+      <path d="M86 -10 L 84 4" stroke-width="0.80"/>
+    </g>
+    <g id="half-6" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="2.60"/>
+      <path d="M214 54 L 232 30" stroke-width="1.60"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="2.60"/>
+      <path d="M234 128 L 262 142" stroke-width="1.60"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="2.60"/>
+      <path d="M206 190 L 216 222" stroke-width="1.60"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="1.10"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="1.40"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-6" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="1.40"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="0.90"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="1.50"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="0.60" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-6" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-6" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-6"/>
+  <use xlink:href="#half-6" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="2.00" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="1.20"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="1.20"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="1.20"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="1.20"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="1.20"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="1.00"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="1.10"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="1.30"/>
+  </g>
+  <use xlink:href="#front-6"/>
+  <use xlink:href="#front-6" transform="translate(300 0) scale(-1 1)"/>
+</svg>
+</div>
+  </div>
+  <div style="position:absolute;left:72px;right:72px;top:740px">
+    <div class="serif" style="font-size:60px">A cage of flies, each driven by<br>a complete <i>wiring diagram.</i></div>
+  </div>
+  <div class="mono" style="position:absolute;left:72px;bottom:56px;font-size:16px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; Solana</div>
+</div>
+
+<!-- icons -->
+<div data-asset="icon-512" style="width:512px;height:512px"><div style="position:absolute;inset:0"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="512" height="512">
+  <title>Instar</title>
+  <g id="m-7">
+  <circle cx="256" cy="256" r="236.0" fill="none" stroke="#141311" stroke-width="12.00"/>
+  <circle cx="256" cy="256" r="208.0" fill="none" stroke="#141311" stroke-width="4.00"/>
+  <g transform="translate(32.58 67.58) scale(1.4895)">
+  <defs>
+    <g id="wing-7" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="3.90"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="2.08"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="2.08"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="2.08"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="2.08"/>
+      <path d="M48 -15 L 47 -7" stroke-width="2.08"/>
+      <path d="M86 -10 L 84 4" stroke-width="2.08"/>
+    </g>
+    <g id="half-7" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="6.76"/>
+      <path d="M214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="6.76"/>
+      <path d="M234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="6.76"/>
+      <path d="M206 190 L 216 222" stroke-width="4.16"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="2.86"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="3.64"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-7" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="3.64"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="2.34"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="3.90"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="1.56" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-7" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-7" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-7"/>
+  <use xlink:href="#half-7" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="5.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="3.12"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="3.12"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="3.12"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="3.12"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="3.12"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="2.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="2.86"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="3.38"/>
+  </g>
+  <use xlink:href="#front-7"/>
+  <use xlink:href="#front-7" transform="translate(300 0) scale(-1 1)"/>
+
+  </g>
+  </g>
+</svg>
+</div></div>
+<div data-asset="apple-touch-icon-180" style="width:180px;height:180px"><div style="position:absolute;inset:14px"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 152 152" width="152" height="152">
+  <title>Instar</title>
+  <g id="m-8">
+  
+  <g transform="translate(9.67 20.06) scale(0.4422)">
+  <defs>
+    <g id="wing-8" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="3.90"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="2.08"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="2.08"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="2.08"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="2.08"/>
+      <path d="M48 -15 L 47 -7" stroke-width="2.08"/>
+      <path d="M86 -10 L 84 4" stroke-width="2.08"/>
+    </g>
+    <g id="half-8" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="6.76"/>
+      <path d="M214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="6.76"/>
+      <path d="M234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="6.76"/>
+      <path d="M206 190 L 216 222" stroke-width="4.16"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="2.86"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="3.64"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-8" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="3.64"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="2.34"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="3.90"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="1.56" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-8" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-8" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-8"/>
+  <use xlink:href="#half-8" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="5.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="3.12"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="3.12"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="3.12"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="3.12"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="3.12"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="2.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="2.86"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="3.38"/>
+  </g>
+  <use xlink:href="#front-8"/>
+  <use xlink:href="#front-8" transform="translate(300 0) scale(-1 1)"/>
+
+  </g>
+  </g>
+</svg>
+</div></div>
+<div data-asset="favicon-32" style="width:32px;height:32px"><div style="position:absolute;inset:0"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 32 32" width="32" height="32">
+  <title>Instar</title>
+  <g id="m-9">
+  <circle cx="16" cy="16" r="14.8" fill="none" stroke="#141311" stroke-width="0.75"/>
+  <circle cx="16" cy="16" r="13.0" fill="none" stroke="#141311" stroke-width="0.25"/>
+  <g transform="translate(2.04 4.22) scale(0.0931)">
+  <defs>
+    <g id="wing-9" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- hinge at 0,0; the tip along +x -->
+      <path d="M0 0 C 12 -16, 46 -24, 88 -20 C 118 -17, 136 -6, 136 4 C 136 14, 114 24, 80 24 C 44 24, 14 16, 0 0 Z" fill="#F3EEE3" fill-opacity="0.72" stroke-width="3.90"/>
+      <path d="M3 -4 C 36 -18, 80 -21, 128 -10" stroke-width="2.08"/>
+      <path d="M5 -1 C 36 -9, 84 -9, 134 2" stroke-width="2.08"/>
+      <path d="M7 3 C 36 0, 70 3, 116 15" stroke-width="2.08"/>
+      <path d="M9 7 C 30 9, 54 15, 82 23" stroke-width="2.08"/>
+      <path d="M48 -15 L 47 -7" stroke-width="2.08"/>
+      <path d="M86 -10 L 84 4" stroke-width="2.08"/>
+    </g>
+    <g id="half-9" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- legs: coxa at the thorax, femur, tibia, tarsus -->
+      <path d="M166 96 L 190 76 L 214 54 L 232 30" stroke-width="6.76"/>
+      <path d="M214 54 L 232 30" stroke-width="4.16"/>
+      <path d="M170 112 L 202 116 L 234 128 L 262 142" stroke-width="6.76"/>
+      <path d="M234 128 L 262 142" stroke-width="4.16"/>
+      <path d="M166 130 L 190 158 L 206 190 L 216 222" stroke-width="6.76"/>
+      <path d="M206 190 L 216 222" stroke-width="4.16"/>
+      <!-- tarsal claws -->
+      <path d="M232 30 l 3 -4 M232 30 l 4 1 M262 142 l 4 -2 M262 142 l 2 4 M216 222 l 4 -1 M216 222 l 1 4" stroke-width="2.86"/>
+      <!-- haltere -->
+      <path d="M170 128 l 12 8" stroke-width="3.64"/>
+      <circle cx="183" cy="136.5" r="3" fill="#141311" stroke="none"/>
+    </g>
+    <g id="front-9" fill="none" stroke="#141311" stroke-linecap="round" stroke-linejoin="round">
+      <!-- antenna with arista -->
+      <path d="M156 42 l 4 -9" stroke-width="3.64"/>
+      <path d="M160 33 l 6 -8 M162 30 l 5 2 M164 28 l 1 5 M165 27 l 6 -1" stroke-width="2.34"/>
+      <!-- compound eye, over the head capsule -->
+      <path d="M160 44 C 172 34, 186 44, 185 62 C 184 78, 172 84, 162 76 C 154 70, 153 54, 160 44 Z" fill="#C98A2B" stroke-width="3.90"/>
+      <path d="M162 50 l 17 4 M159 57 l 22 4 M159 64 l 21 4 M162 71 l 15 3 M166 45 l 10 3" stroke-width="1.56" stroke-opacity="0.65"/>
+    </g>
+  </defs>
+  <!-- wings lie behind the body -->
+  <use xlink:href="#wing-9" transform="translate(166 106) rotate(34)"/>
+  <use xlink:href="#wing-9" transform="translate(134 106) scale(-1 1) rotate(34)"/>
+  <use xlink:href="#half-9"/>
+  <use xlink:href="#half-9" transform="translate(300 0) scale(-1 1)"/>
+  <g fill="#F3EEE3" stroke="#141311" stroke-width="5.20" stroke-linejoin="round" stroke-linecap="round">
+    <!-- abdomen, tergites banded, the male's dark tip -->
+    <path d="M124 128 C 116 148, 116 176, 128 200 C 138 218, 162 218, 172 200 C 184 176, 184 148, 176 128 Z"/>
+    <path d="M121 142 C 136 150, 164 150, 179 142" stroke-width="3.12"/>
+    <path d="M119 158 C 136 166, 164 166, 181 158" stroke-width="3.12"/>
+    <path d="M120 174 C 136 182, 164 182, 180 174" stroke-width="3.12"/>
+    <path d="M125 190 C 138 197, 162 197, 175 190" stroke-width="3.12"/>
+    <path d="M129 200 C 138 214, 162 214, 171 200 Z" fill="#141311" stroke-width="3.12"/>
+    <!-- thorax: mesonotum and scutellum -->
+    <path d="M122 88 C 122 66, 178 66, 178 88 C 182 108, 176 126, 150 134 C 124 126, 118 108, 122 88 Z"/>
+    <path d="M132 118 C 140 128, 160 128, 168 118" stroke-width="2.60"/>
+    <path d="M134 82 l -2 -7 M166 82 l 2 -7 M128 96 l -4 -5 M172 96 l 4 -5 M130 110 l -4 -3 M170 110 l 4 -3 M142 74 l -1 -6 M158 74 l 1 -6" fill="none" stroke-width="2.86"/>
+    <!-- head -->
+    <path d="M130 54 C 130 30, 170 30, 170 54 C 170 68, 162 78, 150 84 C 138 78, 130 68, 130 54 Z"/>
+    <circle cx="150" cy="36" r="1.6" fill="#141311" stroke="none"/>
+    <circle cx="146" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <circle cx="154" cy="40" r="1.3" fill="#141311" stroke="none"/>
+    <path d="M147 76 l 3 8 l 3 -8" fill="none" stroke-width="3.38"/>
+  </g>
+  <use xlink:href="#front-9"/>
+  <use xlink:href="#front-9" transform="translate(300 0) scale(-1 1)"/>
+
+  </g>
+  </g>
+</svg>
+</div></div>
