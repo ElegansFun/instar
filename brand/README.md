@@ -46,12 +46,12 @@ Plex Mono uppercase, tracked, for captions. Both under the OFL.
 ## Words
 
 Name: **Instar** (an instar is one stage of an insect's life between moults).
-Ticker: `$INSTAR`.
+Ticker: `$INSTAR`. Home: **instarcage.com**. GitHub: **github.com/InstarCage**. Handle to claim: **@InstarCage** (X, Telegram).
 
 One line: *A cage of flies, each driven by a complete wiring diagram.*
 
 X bio (159 chars):
-> A cage of adult fruit flies, each driven by every neuron of the Janelia MaleCNS connectome. Every fly is an NFT on Solana. Buy one, watch it, verify the world.
+> A cage of adult fruit flies, each driven by every neuron of the Janelia MaleCNS connectome. Every fly is an NFT on Solana. Watch, own, verify: instarcage.com
 
 Shorter (97 chars):
 > Adult fruit flies driven by a real 166,700-neuron connectome, living in a cage on Solana. $INSTAR

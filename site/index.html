@@ -40,7 +40,7 @@
     <a href="./coin.html">The coin</a>
     <a href="./paper.html">The paper</a>
     <a href="#faq">Questions</a>
-    <a href="https://github.com/ElegansFun/instar" rel="noopener">Source</a>
+    <a href="https://github.com/InstarCage/instar" rel="noopener">Source</a>
   </nav>
 </header>
 
@@ -198,7 +198,7 @@
     <h2>Don't take the operator's word.</h2>
     <p>Every <span data-n="epoch">&mdash;</span> ticks the engine hashes the whole world: every fly, every position, every neuron it touched. The operator posts that 64-bit hash to the <span class="mono">World</span> account on Solana. Anyone can take the world's snapshot, replay the same ticks on their own machine with the same engine, hash it, and compare with what is on chain. Same bytes, honest world; different bytes, caught.</p>
     <ol class="steps small">
-      <li>Clone <a href="https://github.com/ElegansFun/instar" rel="noopener">the repository</a>; install Node 22 or newer.</li>
+      <li>Clone <a href="https://github.com/InstarCage/instar" rel="noopener">the repository</a>; install Node 22 or newer.</li>
       <li><span class="mono">INSTAR_URL=<span id="vf-url">this site</span> npm run verify:epoch</span> &mdash; it fetches the snapshot, replays one epoch, reads the World account, and prints VERIFIED or MISMATCH.</li>
       <li>On a desktop with 4 GB free, <a href="./cage.html">the cage page</a> can run the same replay in your browser.</li>
     </ol>
@@ -227,10 +227,10 @@
     <details><summary>What if the operator disappears?</summary><p>The program has a way out that needs nobody's permission. After 90 days without an operator action anyone can begin wind-down; keepers reclaim their vaults; after 180 days whatever was not claimed goes to a recovery address fixed at creation. The program's own rent can be reclaimed too. No lamport is stranded by design.</p></details>
     <details><summary>How many flies can the cage hold?</summary><p>Two limits, the smaller wins: the economy's (8 plus 20 per SOL of metabolism, up to 40) and the server's compute budget at 80 ms per tick. Running <span data-n="nodes">&mdash;</span> neurons per fly is expensive; the world measures the cost every epoch and reports the capacity live.</p></details>
     <details><summary>Why Solana?</summary><p>The world settles every birth, sale, epoch and death as a transaction, and posts a hash every few minutes. That needs a chain where a transaction costs a fraction of a cent and lands in a second, and an NFT standard (Metaplex Core) where the asset is one account.</p></details>
-    <details><summary>Is the code open?</summary><p>All of it: the engine (Rust to WebAssembly), the Solana program (Anchor), the world process, this site, the census converter, and the verifier. <a href="https://github.com/ElegansFun/instar" rel="noopener">github.com/ElegansFun/instar</a>. The connectome is Janelia's, CC BY 4.0.</p></details>
+    <details><summary>Is the code open?</summary><p>All of it: the engine (Rust to WebAssembly), the Solana program (Anchor), the world process, this site, the census converter, and the verifier. <a href="https://github.com/InstarCage/instar" rel="noopener">github.com/InstarCage/instar</a>. The connectome is Janelia's, CC BY 4.0.</p></details>
   </div>
   <aside class="sec-margin">
-    <div class="mnote"><b>Elsewhere</b><br><a href="./cage.html">The cage</a> &mdash; live, with your account<br><a href="./paper.html">The paper</a> &mdash; the full technical account<br><a href="./coin.html">The coin</a> &mdash; $INSTAR and its fees<br><a href="https://github.com/ElegansFun/instar" rel="noopener">Source</a> &mdash; everything, MIT</div>
+    <div class="mnote"><b>Elsewhere</b><br><a href="./cage.html">The cage</a> &mdash; live, with your account<br><a href="./paper.html">The paper</a> &mdash; the full technical account<br><a href="./coin.html">The coin</a> &mdash; $INSTAR and its fees<br><a href="https://github.com/InstarCage/instar" rel="noopener">Source</a> &mdash; everything, MIT</div>
   </aside>
 </section>
 
@@ -240,7 +240,7 @@
     <p>Data: Janelia FlyEM, MaleCNS v1.0, CC BY 4.0. Berg et al. (2026), <i>Sexual dimorphism in the complete connectome of the Drosophila male central nervous system</i>. The connectome belongs to its authors; nothing here is their endorsement of anything here.</p>
     <p>Flies die. Accounts can be custodial. Nothing on this site is an investment, and no number on it is a forecast.</p>
   </div>
-  <div class="mono"><a href="./cage.html">the cage</a><br><a href="./paper.html">the paper</a><br><a href="./coin.html">the coin</a><br><a href="https://github.com/ElegansFun/instar" rel="noopener">source</a><br><a href="./paper.html#licence">licence</a></div>
+  <div class="mono"><a href="./cage.html">the cage</a><br><a href="./paper.html">the paper</a><br><a href="./coin.html">the coin</a><br><a href="https://github.com/InstarCage/instar" rel="noopener">source</a><br><a href="./paper.html#licence">licence</a></div>
 </footer>
 
 </div>
