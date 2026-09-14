@@ -31,11 +31,14 @@ twice the base). Buying it splits the price:
 |---|---|---|
 | 60% | the fly's own vault | it starts life owning something |
 | 15% | metabolism | raises the cage's carrying capacity |
-| 15% | the rewards pool | pays every living fly each epoch |
+| 15% | the rewards pool | pays the flies alive at every eighth epoch |
 | 10% | the parent's vault | a royalty on having bred well |
 
 With no kept parent the royalty falls to the pool rather than being minted or
 burned. A resale pays the seller 90%, with 5% to metabolism and 5% to the pool.
+On a seller's first resale the buyer also pays the rent of the seller's
+Credit PDA (about 0.00123 SOL) on top of the price; that rent goes to the
+recovery address when the account is closed at the end of the world.
 The buyer names the price it saw; if the price changed underneath it, the
 program refuses rather than charging something else.
 
@@ -43,7 +46,10 @@ program refuses rather than charging something else.
 
 The economy's number is `8 + 20 × (metabolism in SOL)` flies, up to 40, the
 engine's slot count. Metabolism is never spent by the engine; it is the size
-of the world, and it only grows as people buy in.
+of the world, and it grows as people buy in. The operator can move
+metabolism and the pool to any address at any time with `withdraw_treasury`;
+capacity falls with metabolism when that happens. Vaults and credits it
+cannot touch.
 
 The cage holds the smaller of that number and what the host can compute:
 every tick steps every neuron of the MaleCNS connectome for every fly, so
@@ -66,20 +72,26 @@ two; a larger metabolism is a fuller cage. The refill is a journaled input
 
 ## Earning by living
 
-Every epoch (2,400 ticks, four minutes) the world scores each living fly on
-how it actually lived: survival, food eaten since the last score, vitality,
-longevity, maturity reached (the neurosecretory gate), offspring raised,
-lineage depth, and whether it came through a lights-off or a dry spell. Every eighth epoch 25% of the pool is divided
-by those points and credited to vaults in one batched transaction. There is no
-claim button.
+Every eighth epoch (an epoch is 2,400 ticks, four minutes; so every 32
+minutes) the world scores each fly alive at that boundary on how it actually
+lived: survival, food eaten since the last score, vitality, longevity,
+maturity reached (the neurosecretory gate), offspring raised, lineage depth,
+and whether it came through a lights-off or a dry spell. 25% of the pool is
+divided by those points and credited to vaults, in batches of 20 flies per
+transaction. A fly dead before the boundary earns nothing for the epochs it
+lived through. There is no claim button.
 
 ## Death
 
 Death pays out rather than deleting: 40% of the estate is inherited by the
 fly's living offspring in equal shares, 35% returns to metabolism, 15% to the
-pool, and 10% is credited to the keeper as salvage. A fly culled at its
-keeper's request pays the keeper 85%. The record stays on chain forever,
-marked dead; only the vault empties.
+pool, and 10% is credited to the keeper as salvage. With no living offspring
+the 40% goes to metabolism; with no keeper who can sign for the asset, the
+10% does too. A fly with a cull pending at its keeper's request pays the
+keeper 85%, whatever cause the death is recorded with. Once the world is
+winding down a death credits the whole vault to the keeper (to metabolism if
+the fly has no keeper). The record stays on chain, marked dead, until the
+world is closed after escheat (`docs/RECOVERY.md`); only the vault empties.
 
 Upkeep climbs with age, flight costs twice the walking thrust term plus a fixed burn, the dry corner
 desiccates and the water pool drowns, so death arrives as a consequence of
@@ -87,14 +99,15 @@ how and where a fly lived rather than from a timer.
 
 ## The token's earnings
 
-`$INSTAR` is a pump.fun coin launched by a person, not by the program, with
-its creator set to a fee keypair. Its creator fees (0.30% of every trade on
+`$INSTAR` will be a pump.fun coin launched by a person, not by the program,
+with its creator set to a fee keypair; until it launches the site names no
+mint. Its creator fees (0.30% of every trade on
 the bonding curve, 0.30%–0.95% by market-cap tier on PumpSwap, per pump's
 on-chain fee config) accrue in pump's creator vaults; the world claims them
 every ten minutes and sweeps the fee keypair into `fund(pool_bps = 5000)`:
 half to metabolism, half to the pool. `fund` is permissionless, so the
-cage's income does not stop when the process does, and nothing is taken out
-for a team. The coin has no other utility and promises no value; the launch
+cage's income does not stop when the process does. The coin has no other
+utility and promises no value; the launch
 procedure, the claim mechanism and the caveats are in `docs/COIN.md`.
 
 ## Every lamport has a way out
@@ -102,7 +115,8 @@ procedure, the claim mechanism and the caveats are in `docs/COIN.md`.
 The rule the program is organised around, tested on every build:
 
 > Every balance the program holds has an exit that **anyone** may call, sending
-> to a recovery address fixed at initialisation.
+> to a recovery address that is fixed from the moment wind-down begins (until
+> then the operator may change it with `set_recovery`).
 
 A keeper reclaims their own fly's vault with no operator alive; anyone sweeps
 the treasuries to recovery once the world is winding down; and 180 days after

@@ -29,7 +29,7 @@ differently.
 |---|---|---|---|---|
 | 1 | `begin_wind_down` | the operator; anyone after 90 days of operator silence | any time | nothing. Births, offers, sales, rewards and `fund` are refused from this slot; deaths and epochs still settle |
 | 2 | `sweep_to_recovery` | anyone | wind-down | metabolism + pool, to recovery. Vaults and credits untouched |
-| 3 | `escheat` | anyone | 180 days after wind-down | everything the World holds above its rent, to recovery: every vault and credit nobody claimed. The ledger is zeroed |
+| 3 | `escheat` | anyone | 180 days after wind-down began (day 270 at the earliest for a world abandoned at day 90) | everything the World holds above its rent, to recovery: every vault and credit nobody claimed. The ledger is zeroed |
 | 4 | `close_record` × N, `close_credit` × M, `close_world` | anyone | after escheat | the rent of every Creature PDA, every Credit PDA, then the World PDA, to recovery |
 | 5 | system transfers | the operator | after close_world | the fee keypair (after a last claim of the coin's creator fees) and the operator keypair, to recovery |
 | 6 | `solana program close` | the upgrade authority | after close_world | the program's rent (its program-data account), to recovery |
@@ -52,9 +52,10 @@ The program's rule is that every balance has an exit that needs nobody's
 permission, and wind-down opens all of them at once. From step 1 a keeper
 can:
 
-- **reclaim their fly's vault** with `reclaim_vault` (the site's button,
-  or any wallet): the vault becomes their credit, the asset is burned, the
-  fly is DEAD on the record;
+- **reclaim their fly's vault** with `reclaim_vault`, sent from the wallet
+  that holds the asset (there is no site button yet; a custodial keeper
+  withdraws the fly to a wallet first): the vault becomes their credit, the
+  asset is burned, the fly is DEAD on the record;
 - **withdraw their credit** with `withdraw`, at any time, as always;
 - **keep their NFT.** A fly they do not reclaim stays theirs as a Core
   asset in their wallet. Nothing in this procedure touches an asset a
@@ -65,11 +66,13 @@ can:
   reclaimed it, went to recovery at step 3.
 
 The 180 days between steps 1 and 3 are theirs. Tell them, and leave the
-process running through it: every death that settles in that time moves a
-vault into a credit its keeper can withdraw, and the site keeps working for
-reclaims and withdrawals. What nobody has claimed by the end of the clock
-goes to recovery at step 3, and from then on a late `reclaim_vault` or
-`withdraw` fails `Insolvent`: the ledger says nothing is owed.
+process running through it: a death settled during wind-down credits the
+whole vault to its keeper (no heirs, no treasuries; to metabolism only when
+the fly has no keeper), so a fly that dies before its keeper acts loses
+nothing, and the site keeps working for withdrawals. What nobody has claimed
+by the end of the clock goes to recovery at step 3, and from then on a late
+`reclaim_vault` or `withdraw` fails `Insolvent`: the ledger says nothing is
+owed.
 
 **Custodial wallets** are the exception the program cannot see. An Instar
 account is a keypair the world process holds for the keeper; the SOL and the
@@ -100,7 +103,10 @@ that those wallets keep what they hold.
 
 All figures are read from the chain at the time; these are the ones
 measured on a localnet validator with the current artifact and rent
-parameters (September 2026):
+parameters (September 2026). Rent is whatever the RPC reports, not a
+constant: the rent-exempt minimum of an empty account read 650,240 lamports
+(0.00065024 SOL) on mainnet in 2026-09 (`docs/COIN.md`), below the localnet
+parameters here, so mainnet sums come out smaller:
 
 | account | rent | how many |
 |---|---|---|
@@ -116,12 +122,13 @@ whatever steps 2, 3 and 5 moved. `recover-all` prints the exact sums it
 finds before sending (the records' rent is read from the accounts, not
 computed).
 
-The fee keypair: the world's ten-minute sweep leaves it at exactly the
-rent-exempt minimum (0.00089088 SOL), which an account cannot pay its own
-fee out of (a fee payer must remain rent-exempt after its fee is taken, or
-end at zero); step 5 has the operator pay that fee, so the key ends at zero.
-With `INSTAR_COIN_MINT` set, step 5 first claims whatever the coin's creator
-vaults still hold, into the fee keypair, and drains that too.
+The fee keypair: the world's ten-minute sweep leaves it holding its
+rent-exempt minimum plus `INSTAR_GAS_RESERVE` (default 0.05 SOL). An account
+cannot pay its own fee out of the rent floor (a fee payer must remain
+rent-exempt after its fee is taken, or end at zero), so step 5 has the
+operator pay the fee and drains the key to zero. With `INSTAR_COIN_MINT`
+set, step 5 first claims whatever the coin's creator vaults still hold, into
+the fee keypair, and drains that too.
 
 ## The order, and what each step destroys
 
@@ -146,8 +153,9 @@ vaults still hold, into the fee keypair, and drains that too.
    Core collection account is not closed: it is Core's, not the program's,
    and its update authority was the World PDA, which no longer exists, so
    it becomes an ownerless collection that still names every asset in it.
-5. **Draining the keys** is ordinary transfers. The operator keeps
-   `rent + 2 fees` (0.00090088 SOL) if it is the program's upgrade
+5. **Draining the keys** is ordinary transfers. The operator keeps its
+   rent-exempt minimum plus two fees (rent as read from the RPC at the time;
+   0.00065024 SOL on mainnet, 2026-09) if it is the program's upgrade
    authority, so that it can sign step 6 and the drain after.
 6. **`solana program close`** returns the program's rent and makes the
    program id undeployable forever. `scripts/wsl-close-program.sh` refuses

@@ -27,12 +27,13 @@ each lamport can still be got out, by someone, without anyone's permission:
 | creature vault   | `reclaim_vault` by its keeper once the world is winding down         |
 | credit           | `withdraw` by its owner, at any time                                 |
 | metabolism, pool | `withdraw_treasury` by the operator; `sweep_to_recovery` by anyone in wind-down |
-| anything left    | `escheat` to `recovery`, 180 days after wind-down began              |
+| anything left    | `escheat` to `recovery`, 180 days after `begin_wind_down` landed   |
 | account rent     | `close_record`, `close_credit`, `close_world` to `recovery`, after escheat |
 
 Wind-down is declared by the operator, or by anyone once the operator has been
-silent for 90 days. Every operator instruction refreshes the heartbeat, so a
-world that is being run never opens these doors.
+silent for 90 days, so an abandoned world escheats at day 270 at the earliest.
+Every operator instruction refreshes the heartbeat, so a world that is being
+run never opens these doors.
 
 ## Money
 
@@ -61,13 +62,13 @@ totals against the sum of every creature and credit account after each flow.
 | --------------------- | -------- | ----------------------------------------------------------- |
 | operator              | Pubkey   | the crank: registers births, settles deaths, posts epochs   |
 | pending_operator      | Pubkey   | two-step hand-over                                          |
-| recovery              | Pubkey   | where an abandoned world's money goes; set at init          |
+| recovery              | Pubkey   | where an abandoned world's money goes; set at init, changeable by `set_recovery` until wind-down begins, fixed after |
 | collection            | Pubkey   | the Core collection every fly's asset belongs to; set at init |
 | next_id               | u64      | the next fly id the engine may register                   |
 | total_alive           | u64      | flies not DEAD                                             |
 | last_epoch, last_epoch_tick, last_state_hash | u64, u64, [u8;32] | the last epoch commitment  |
 | metabolism            | u64      | treasury that sets carrying capacity                        |
-| pool                  | u64      | treasury that pays living flies each epoch                 |
+| pool                  | u64      | treasury that pays living flies every eighth epoch         |
 | total_vaults          | u64      | sum of every creature vault                                 |
 | total_credit          | u64      | sum of every credit                                         |
 | last_operator_action  | i64      | unix time of the last operator instruction                  |
@@ -104,7 +105,8 @@ big-endian order. The journal, the site and `/api/journal` carry only the
 replayed engine compares the last 8 bytes of the account field to that value.
 
 `Credit`, seeds `["credit", owner]`: `owner`, `amount`, `bump`. Created with
-`init_if_needed` by whichever instruction first owes the owner something; the
+`init_if_needed` by whichever instruction first owes the owner something
+(`buy_listed`, `settle_death`, `force_settle_cull`, `reclaim_vault`); the
 transaction's signer pays its rent and the world counts it in `credits_open`.
 Closed only by `close_credit` after escheat.
 
@@ -202,7 +204,7 @@ is the asset's current owner; instructions that touch the asset also take
 | --- | --- | --- |
 | `init_world(recovery, collection_uri)` | the program's upgrade authority (pays rent, becomes operator) | creates World and the Core collection (`collection` is a fresh keypair signer); the signer must be the upgrade authority named by the program-data account (`program`, `program_data` accounts), so nobody can claim the singleton PDA ahead of the deployer; `recovery` must be set and must not be the operator |
 | `set_recovery(new)` | operator | not in wind-down; never the operator |
-| `transfer_operator(new)` / `accept_operator()` | operator / pending | two-step |
+| `transfer_operator(new)` / `accept_operator()` | operator / pending | two-step; neither may make the recovery address the operator |
 | `heartbeat()` | operator | refreshes `last_operator_action` |
 | `post_epoch(epoch, tick, hash)` | operator | `epoch == last_epoch + 1`, `tick > last_epoch_tick` |
 | `register_birth(id, parent_id, generation, birth_tick, genome_hash, uri)` | operator (pays rent) | `id == next_id`; WILD; creates the Core asset (`asset` is a fresh keypair signer) owned by the World PDA; not in wind-down |
@@ -212,7 +214,7 @@ is the asset's current owner; instructions that touch the asset also take
 | `unlist(id)` | keeper or `listed_by` | clears the listing |
 | `buy_listed(id, price)` | buyer | `sale_price > 0`, the asset still `listed_by`'s and the listing younger than LISTING_MAX_AGE, else NotForSale; 90% to `listed_by`'s credit (`seller_credit`, derived from the record), 5% metabolism, 5% pool; the vault travels with the fly; the asset moves to the buyer through the transfer delegate; refused for a pending cull and in wind-down |
 | `reward_many(amounts)` | operator | creatures in `remaining_accounts`, one per amount; pool to vaults; DEAD skipped; not in wind-down |
-| `settle_death(id, cause, tick, heir_count)` | operator | first `heir_count` of `remaining_accounts` are heirs (must be alive). Cause 6 with `pending_cull`: 85% keeper credit, 15% metabolism. Otherwise 40% heirs in equal shares (dust to pool; no heirs: to metabolism), 35% metabolism, 15% pool, 10% keeper credit (no keeper: metabolism). `keeper_credit` is an optional account, required when the fly has a keeper; burns the asset. An asset the keeper already burned natively is accepted: no keeper, `keeper_credit` absent, nothing burned. A fly already DEAD fails WrongStatus |
+| `settle_death(id, cause, tick, heir_count)` | operator | first `heir_count` of `remaining_accounts` are heirs: each must be alive and the fly's own offspring (`parent_id == id`), passed in strictly increasing id order. With `pending_cull`, whatever the cause: 85% keeper credit, 15% metabolism. In wind-down: the whole vault to the keeper credit (no keeper: metabolism), nothing to heirs or treasuries. Otherwise 40% heirs in equal shares (dust to pool; no heirs: to metabolism), 35% metabolism, 15% pool, 10% keeper credit (no keeper: metabolism). `keeper_credit` is an optional account, required when the fly has a keeper; burns the asset. An asset the keeper already burned natively is accepted: no keeper, `keeper_credit` absent, nothing burned. A fly already DEAD fails WrongStatus |
 | `request_cull(id)` | keeper | OWNED; clears the listing, freezes the asset, starts CULL_TIMEOUT |
 | `force_settle_cull(id)` | anyone | after CULL_TIMEOUT: 85% keeper credit, 15% metabolism; burns the asset |
 | `withdraw()` | credit owner | credit to owner's account |
@@ -251,7 +253,8 @@ that the records back money and closing one is refused with `NotEscheated`):
    its keeper as a collectible, a dead one's is already a burned stub.
    `closed_records` counts them.
 2. `close_credit()` for every `Credit` account (found by program-account
-   scan on the Credit discriminator; `credits_open` says how many exist).
+   scan on the Credit discriminator; `credits_open` says how many exist,
+   counting every path that creates one, `reclaim_vault` included).
    No signature: after escheat a credit is empty and backs nothing.
 3. `close_world()`, refused with `RecordsStillOpen` until
    `closed_records == next_id` and `credits_open == 0`. The collection is a

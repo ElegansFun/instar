@@ -474,10 +474,13 @@ async function buildWorld() {
   // The boot replay is the same rule as advanceSim, chunk by chunk, but it
   // gives the event loop a turn every so often so the already-bound port can
   // answer /api/health with `replaying` and how far along it is.
-  for (let t = engine.tick, n = 0; t < journal.tick; n++) {
+  let lastYield = Date.now();
+  for (let t = engine.tick; t < journal.tick;) {
     t = stepChunk(t, journal.tick);
     boot.tick = t;
-    if (n % 32 === 0) await new Promise<void>(r => setImmediate(r));
+    // yield on wall time, not chunk count: /api/health must answer while a
+    // long replay runs, and a supervisor that sees a silent port restarts it
+    if (Date.now() - lastYield > 250) { await new Promise<void>(r => setImmediate(r)); lastYield = Date.now(); }
   }
   let tick = engine.tick;
   streamEvents = [];

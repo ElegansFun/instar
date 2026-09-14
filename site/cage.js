@@ -608,7 +608,11 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
   });
   $("wal-claim").addEventListener("click", (ev) => act("withdraw", {}, "credit claimed", ev.currentTarget));
   function signIn(j) { setSession({ token: j.token, user: j.user, name: j.name, wallet: j.wallet }); msg("acct-msg2", ""); renderAcct(); renderMine(); }
-  function signOut() { setSession(null); me = null; msg("acct-msg2", ""); renderAcct(); renderMine(); }
+  function signOut() {
+    // the token is revoked on the world too; a shared machine keeps nothing usable
+    if (session && session.token) post("/api/logout", {}).catch(() => undefined);
+    setSession(null); me = null; msg("acct-msg2", ""); renderAcct(); renderMine();
+  }
   async function auth(create) {
     const user = $("acct-user").value.trim(), pin = $("acct-pin").value;
     if (!user || !pin) { msg("acct-msg", "name and pin are both needed", "err"); return; }

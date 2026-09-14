@@ -117,6 +117,7 @@ function serveStatic(site: Site, url: string, res: http.ServerResponse): boolean
 }
 const BODY_LIMIT = 64 * 1024;
 const AUTH_RATE = { max: 5, windowMs: 60_000 };
+const SNAPSHOT_MAX_STREAMS = 4;
 /// Behind a reverse proxy the socket address is the proxy's; set
 /// INSTAR_TRUST_PROXY=1 to key the rate limit on the LAST X-Forwarded-For
 /// element (the one the proxy itself appended; earlier ones are client-supplied).
@@ -186,6 +187,8 @@ export function createServer(boot: Boot): http.Server {
 
 function handler(ctx: WorldContext) {
   const authHits = new Map<string, number[]>();
+  let snapshotStreams = 0;
+  const snapshotByIp = new Set<string>();
   const idlJson = JSON.stringify(loadIdl());
 
   // ---- /api/stream: one frame per period, written to every open client.
@@ -440,6 +443,12 @@ function handler(ctx: WorldContext) {
       return { ...ctx.accounts.profile(who), wallet: me.toBase58(), balance: lamports(balance), credit: lamports(credit), owned };
     }
 
+    if (url === "/api/logout") {
+      // the bearer dies here, not only in the page's storage
+      ctx.accounts.closeSession(bearer(req));
+      return { ok: true };
+    }
+
     if (url === "/api/name-lineage") {
       // Naming a bloodline is a claim on the record, not a chain action — it
       // costs nothing and lives in the journal beside the lineage. The claim
@@ -564,6 +573,8 @@ function handler(ctx: WorldContext) {
       res.setHeader("vary", "origin");
     }
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    res.setHeader("x-content-type-options", "nosniff");
+    res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
     // link previewers and monitors ask HEAD before GET: answer like GET (Node
     // drops the body itself), except the two routes that would stream
     const head = req.method === "HEAD";
@@ -669,9 +680,18 @@ function handler(ctx: WorldContext) {
           } else {
             file = await ctx.latestSnapshotFile();
           }
+          // ~150 MB each: a few at a time, one per address, or the stream
+          // and the settlement share the socket with a download loop
+          const ip = clientIp(req);
+          if (snapshotStreams >= SNAPSHOT_MAX_STREAMS || snapshotByIp.has(ip)) {
+            res.setHeader("retry-after", "60");
+            return json(429, { error: "another snapshot is being served; try again in a minute" });
+          }
+          snapshotStreams++; snapshotByIp.add(ip);
+          res.on("close", () => { snapshotStreams--; snapshotByIp.delete(ip); });
           res.setHeader("content-type", "application/octet-stream");
           res.setHeader("content-encoding", "gzip");
-          res.setHeader("cache-control", "no-cache");
+          res.setHeader("cache-control", "public, max-age=300");
           res.setHeader("content-length", String(fs.statSync(file).size));
           res.writeHead(200);
           fs.createReadStream(file).pipe(res);
