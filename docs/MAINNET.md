@@ -148,7 +148,7 @@ volume (never bake them into the image):
 |---|---|
 | `INSTAR_CLUSTER` | `mainnet-beta` |
 | `INSTAR_RPC` | a paid RPC endpoint; the public one rate-limits |
-| `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container |
+| `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container. Hosts that only pass secrets as variables (Railway) set `INSTAR_OPERATOR_KEYPAIR_JSON` to the 64-number array instead; the world writes it once to `DATA_DIR/keys/operator.json` (mode 0600) and reads the file from then on |
 | `INSTAR_MASTER_KEY` | 32 random bytes as hex; encrypts custodial wallets at rest. REQUIRED on mainnet-beta: the world refuses to start without it (on localnet/devnet it defaults to a key derived from the operator key, which would lock every keeper out if the operator key were rotated or lost). Keep it separately from the operator key |
 | `DATA_DIR` | a persistent volume (`/data`); journal, snapshot (`snapshot.bin.gz`, ~150 MB, rewritten every five minutes), accounts and sessions live here |
 | `PUBLIC_URL` | the public origin: written into every fly's NFT as its metadata URI at birth, and into the collection at `init_world`. Fix it before the first birth and never change it; a moved host keeps serving under the same domain, or older NFTs point at a dead address |
@@ -171,7 +171,7 @@ what the coin is. Then:
 
 | env | value |
 |---|---|
-| `INSTAR_FEE_KEYPAIR` | path to `fee.json` inside the container |
+| `INSTAR_FEE_KEYPAIR` | path to `fee.json` inside the container, or `INSTAR_FEE_KEYPAIR_JSON` with its contents |
 | `INSTAR_COIN_MINT` | the coin's mint address |
 
 Seed the fee keypair once, from the operator key: `npx tsx

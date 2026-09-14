@@ -99,9 +99,27 @@ type Ctx = Awaited<ReturnType<typeof buildWorld>>;
 /// bound before the world is built; /api/health reports the replay from it
 const boot: Boot = { ctx: null, tick: 0, target: 0 };
 
+/// Hosts like Railway hand secrets over as environment variables, not files.
+/// A keypair given as INSTAR_<NAME>_KEYPAIR_JSON (the 64-number array) is
+/// written once into DATA_DIR/keys/<name>.json (mode 0600) and the file path
+/// takes over from there, so every other code path keeps reading files.
+function materialiseKeypair(name: "operator" | "fee"): string | undefined {
+  const json = process.env[`INSTAR_${name.toUpperCase()}_KEYPAIR_JSON`];
+  if (!json) return undefined;
+  const file = path.join(DATA_DIR, "keys", `${name}.json`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const bytes = JSON.parse(json);
+  if (!Array.isArray(bytes) || bytes.length !== 64) throw new Error(`INSTAR_${name.toUpperCase()}_KEYPAIR_JSON must be a 64-number array`);
+  const content = JSON.stringify(bytes);
+  if (!fs.existsSync(file) || fs.readFileSync(file, "utf8") !== content) fs.writeFileSync(file, content, { mode: 0o600 });
+  return file;
+}
+
 async function buildWorld() {
   if (!["localnet", "devnet", "mainnet-beta"].includes(CLUSTER)) throw new Error(`INSTAR_CLUSTER must be localnet|devnet|mainnet-beta, not ${CLUSTER}`);
-  if (!fs.existsSync(OPERATOR_KEYPAIR)) throw new Error(`no operator keypair at ${OPERATOR_KEYPAIR} (INSTAR_OPERATOR_KEYPAIR)`);
+  const operatorFile = materialiseKeypair("operator") ?? OPERATOR_KEYPAIR;
+  const feeFile = materialiseKeypair("fee") ?? process.env.INSTAR_FEE_KEYPAIR;
+  if (!fs.existsSync(operatorFile)) throw new Error(`no operator keypair at ${operatorFile} (INSTAR_OPERATOR_KEYPAIR or INSTAR_OPERATOR_KEYPAIR_JSON)`);
   // Refuse before touching the chain or any file: custodial wallets must not
   // be sealed under the operator key, which is the key most likely to rotate.
   if (CLUSTER === "mainnet-beta" && !/^[0-9a-f]{64}$/i.test(process.env.INSTAR_MASTER_KEY ?? "")) {
@@ -119,7 +137,7 @@ async function buildWorld() {
   log(`engine: ${engine.nodeCount} neurons, ${engine.edgeCount} connections, ${MAX_POP} slots, ${(engine.heapBytes / 1e6).toFixed(0)} MB allocated`);
 
   // ---------- chain ----------
-  const operator = loadKeypair(OPERATOR_KEYPAIR);
+  const operator = loadKeypair(operatorFile);
   const chain = new Chain({ cluster: CLUSTER, rpc: process.env.INSTAR_RPC, programId: process.env.INSTAR_PROGRAM_ID, operator });
   log(`cluster ${CLUSTER}  program ${chain.programId.toBase58()}  world ${chain.worldPda.toBase58()}`);
   // provider keys ride in the query string; logs must never carry them
@@ -718,8 +736,8 @@ async function buildWorld() {
   // the fee keypair first; the sweep then moves everything above rent and
   // the gas reserve into the world. A failed claim leaves the sweep to run
   // on whatever is already there and is retried next interval.
-  if (process.env.INSTAR_FEE_KEYPAIR) {
-    const fee = loadKeypair(process.env.INSTAR_FEE_KEYPAIR);
+  if (feeFile) {
+    const fee = loadKeypair(feeFile);
     const claimer = process.env.INSTAR_COIN_MINT
       ? new FeeClaimer({ chain, mint: new PublicKey(process.env.INSTAR_COIN_MINT), fee, log })
       : null;
