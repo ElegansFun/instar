@@ -10,7 +10,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { readJsonWithBackup, writeAtomic } from "./journal.mts";
 
 type Enc = { iv: string; tag: string; ct: string };
-export type Account = { pinSalt: string; pinHash: string; enc: Enc; email?: string; name?: string; created: number };
+export type Account = { pinSalt: string; pinHash: string; enc: Enc; email?: string; name?: string; created: number; toppedUpAt?: number };
 
 export type Session = { user: string; exp: number };
 
@@ -272,6 +272,9 @@ export class Accounts {
     if (!s || s.exp < Date.now()) return null;
     return s.user;
   }
+
+  toppedUp(user: string): boolean { return !!this.accounts[user]?.toppedUpAt; }
+  markToppedUp(user: string) { const a = this.accounts[user]; if (a) { a.toppedUpAt = Date.now(); this.save(); } }
 
   closeSession(token: string | undefined) {
     if (token && this.sessions.delete(Accounts.key(token))) this.saveSessions();

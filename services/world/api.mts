@@ -118,6 +118,8 @@ function serveStatic(site: Site, url: string, res: http.ServerResponse): boolean
 const BODY_LIMIT = 64 * 1024;
 const AUTH_RATE = { max: 5, windowMs: 60_000 };
 const SNAPSHOT_MAX_STREAMS = 4;
+/// below this the operator keeps its devnet SOL for settlement
+const OPERATOR_TOPUP_FLOOR = 2_000_000_000n;
 /// Behind a reverse proxy the socket address is the proxy's; set
 /// INSTAR_TRUST_PROXY=1 to key the rate limit on the LAST X-Forwarded-For
 /// element (the one the proxy itself appended; earlier ones are client-supplied).
@@ -480,9 +482,14 @@ function handler(ctx: WorldContext) {
         sig = await ctx.chain.airdrop(me, AIRDROP_LAMPORTS);
         ctx.store.logTx("airdrop", sig, true);
       } catch (e: any) {
+        // the operator tops an account up once; a loop of airdrop, withdraw,
+        // airdrop drained it to the floor and stopped every settlement
+        const refused = `airdrop refused by the RPC (${String(e?.message ?? e).slice(0, 80)}) — try https://faucet.solana.com`;
+        if (ctx.accounts.toppedUp(who)) throw new HttpError(503, refused + "; this account has had its one top-up from the operator");
         const opBalance = await ctx.chain.balance(ctx.chain.operator.publicKey);
-        if (opBalance < target * 5n) throw new HttpError(503, `airdrop refused by the RPC (${String(e?.message ?? e).slice(0, 80)}) — try https://faucet.solana.com`);
+        if (opBalance < OPERATOR_TOPUP_FLOOR) throw new HttpError(503, refused);
         sig = await ctx.chain.sendFromOperator(me, target - held);
+        ctx.accounts.markToppedUp(who);
         ctx.store.logTx("airdrop", sig, true);
       }
       ctx.store.persist();
