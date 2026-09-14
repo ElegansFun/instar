@@ -12,3 +12,4 @@ data/raw
 data/world*
 *.log
 brand
+!site/build.json
