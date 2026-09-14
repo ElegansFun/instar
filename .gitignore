@@ -21,3 +21,4 @@ data/raw/
 program/target/deploy/*-keypair.json
 
 backups/
+site/build.json

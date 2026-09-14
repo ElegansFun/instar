@@ -97,6 +97,15 @@ const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north 
       : `<span class="faint">no result posted yet</span>`);
     setHtml("rc-program", link("address", live.programId, live, 44));
     setHtml("rc-world", link("address", live.worldPda, live, 44));
+    setHtml("rc-collection", config.collection ? link("address", config.collection, live, 44) : "\u2014");
+    const last = (live.epochs || [])[(live.epochs || []).length - 1];
+    setHtml("rc-epoch", last ? `epoch ${last.epoch} at tick ${fmt(last.tick)}, hash ${esc(last.hash)}, ${link("tx", last.sig, live)}` : `<span class="faint">none yet</span>`);
+    const b = config.build || {};
+    setHtml("rc-commit", b.commit
+      ? `<a class="chain" href="https://github.com/InstarCage/instar/commit/${esc(b.commit)}" target="_blank" rel="noopener">${esc(b.commit.slice(0, 12))}</a>${b.dirty ? ' <span class="bad">with uncommitted changes</span>' : ""}${b.at ? ` \u00b7 deployed ${esc(b.at.slice(0, 16).replace("T", " "))} UTC` : ""}`
+      : `<span class="faint">unstamped build: the commit was not recorded at deploy</span>`);
+    setText("rc-wasm", b.wasmSha256 || "\u2014");
+    setText("rc-census", b.censusRoot || "\u2014");
     // the coin: named by the world once it exists, so this page needs no redeploy
     const coin = config.coin || {};
     setHtml("coin-mint", coin.mint ? `${link("address", coin.mint, live, 44)} \u00b7 <a class="chain" href="https://pump.fun/coin/${esc(coin.mint)}" target="_blank" rel="noopener">pump.fun</a>` : `<span class="faint">not launched yet</span>`);

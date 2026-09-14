@@ -26,14 +26,15 @@
     "fees": "tsx scripts/fees.mts",
     "operator": "tsx scripts/operator.mts",
     "backup": "tsx scripts/backup.mts",
-    "fees": "tsx scripts/fees.mts",
     "verify": "tsx scripts/verify.mts",
     "verify:epoch": "tsx scripts/verify-epoch.mts",
     "journey": "tsx scripts/journey.mts",
     "check:recovery": "tsx scripts/check-recovery.mts",
     "roles:check": "node scripts/roles-check.mjs",
     "census:test": "python -m unittest tools.census.test_canonical -v",
-    "census:verify": "python -m tools.census verify data/canonical/droso-winding2023-larva.census.json"
+    "census:verify": "python -m tools.census verify data/canonical/male-cns-v1.0.census.json",
+    "stamp": "node scripts/stamp-build.mjs",
+    "deploy:railway": "node scripts/stamp-build.mjs && railway up --service world --detach"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

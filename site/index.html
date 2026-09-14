@@ -60,7 +60,7 @@
     <div class="live-grid">
       <div><span class="v num" id="lv-pop">&mdash;</span><span class="k">flies alive</span></div>
       <div><span class="v num" id="lv-cap">&mdash;</span><span class="k">the cage can hold</span></div>
-      <div><span class="v num" id="lv-epoch">&mdash;</span><span class="k">epochs on chain</span></div>
+      <div><span class="v num" id="lv-epoch">&mdash;</span><span class="k">current epoch</span></div>
       <div><span class="v num" id="lv-tick">&mdash;</span><span class="k">ticks lived</span></div>
     </div>
     <div class="live-line" id="lv-state"><b>booting</b></div>
@@ -148,7 +148,7 @@
 <section class="sec" id="own">
   <div class="sec-no"><b>2</b>Own a fly</div>
   <div class="sec-body">
-    <h2>Three steps. Two minutes.</h2>
+    <h2>How to own one.</h2>
     <ol class="steps">
       <li><b>Open <a href="./cage.html">the cage</a> and pick a way in.</b> <i>Instar account</i>: a name and a PIN; the world holds a Solana keypair for you, encrypted under your PIN, and you can withdraw everything to any address whenever you like. <i>Your wallet</i>: connect Phantom, Solflare or any Solana wallet; the page builds each transaction and your wallet signs it, and the world never sees your key. Google sign-in is available where the operator has enabled it.</li>
       <li><b>Put in a little SOL.</b> An Instar account shows a deposit address and a QR code. A newborn costs <span id="own-price">&mdash;</span>; the price rises by generation, and a founder (generation 0) costs double.</li>
@@ -202,13 +202,20 @@
       <li><span class="mono">INSTAR_URL=<span id="vf-url">this site</span> npm run verify:epoch</span> &mdash; it fetches the snapshot, replays one epoch, reads the World account, and prints VERIFIED or MISMATCH.</li>
       <li>On a desktop with 4 GB free, <a href="./cage.html">the cage page</a> can run the same replay in your browser.</li>
     </ol>
+    <div class="eyebrow" style="margin-top:22px">What this world is, verifiably</div>
     <table class="data">
       <tbody>
         <tr><td>latest verifier result</td><td class="sig" id="rc-verified">&mdash;</td></tr>
+        <tr><td>latest epoch posted</td><td class="sig" id="rc-epoch">&mdash;</td></tr>
         <tr><td>program</td><td class="sig" id="rc-program">&mdash;</td></tr>
         <tr><td>world account</td><td class="sig" id="rc-world">&mdash;</td></tr>
+        <tr><td>collection</td><td class="sig" id="rc-collection">&mdash;</td></tr>
+        <tr><td>source commit running</td><td class="sig" id="rc-commit">&mdash;</td></tr>
+        <tr><td>engine sha-256</td><td class="sig" id="rc-wasm">&mdash;</td></tr>
+        <tr><td>census root (sha-256 Merkle)</td><td class="sig" id="rc-census">&mdash;</td></tr>
       </tbody>
     </table>
+    <p class="small dim">The engine hash is of the exact <span class="mono">instar_sim.wasm</span> this world runs and serves; build the commit yourself (<span class="mono">npm run sim:build</span>) and compare. The census root is recomputed by <span class="mono">npm run census:verify</span> from Janelia's published files.</p>
     <p class="small dim">The last twelve epochs and every transaction the operator sent are listed in <a href="./paper.html#record">the paper, section 5</a>.</p>
   </div>
   <aside class="sec-margin">
@@ -225,7 +232,7 @@
     <details><summary>Can I lose money?</summary><p>Yes. A fly can die shortly after you buy it, with only its death settlement coming back. Prices are what buyers pay; nothing here is an investment or a promise of return.</p></details>
     <details><summary>Who holds my keys?</summary><p>Your choice. With an Instar account the operator holds a keypair for you, encrypted under your PIN; that is a trust assumption. With your own wallet, nobody but you: the page builds transactions from the program's IDL and your wallet signs them.</p></details>
     <details><summary>What if the operator disappears?</summary><p>The program has a way out that needs nobody's permission. After 90 days without an operator action anyone can begin wind-down; keepers reclaim their vaults; after 180 days whatever was not claimed goes to a recovery address fixed at creation. The program's own rent can be reclaimed too. No lamport is stranded by design.</p></details>
-    <details><summary>How many flies can the cage hold?</summary><p>Two limits, the smaller wins: the economy's (8 plus 20 per SOL of metabolism, up to 40) and the server's compute budget at 80 ms per tick. Running <span data-n="nodes">&mdash;</span> neurons per fly is expensive; the world measures the cost every epoch and reports the capacity live.</p></details>
+    <details><summary>How many flies can the cage hold?</summary><p>Two limits, the smaller wins: the economy's (8 plus 20 per SOL of metabolism, up to 40) and the server's compute budget at 80 ms per tick. Running <span data-n="nodes">&mdash;</span> neurons per fly is expensive; the world measures the cost every epoch and reports the capacity live. The cage refills: when the population has sat below half its capacity for a minute, new founders are born to bring it back, so a bigger metabolism is a fuller cage.</p></details>
     <details><summary>Why Solana?</summary><p>The world settles every birth, sale, epoch and death as a transaction, and posts a hash every few minutes. That needs a chain where a transaction costs a fraction of a cent and lands in a second, and an NFT standard (Metaplex Core) where the asset is one account.</p></details>
     <details><summary>Is the code open?</summary><p>All of it: the engine (Rust to WebAssembly), the Solana program (Anchor), the world process, this site, the census converter, and the verifier. <a href="https://github.com/InstarCage/instar" rel="noopener">github.com/InstarCage/instar</a>. The connectome is Janelia's, CC BY 4.0.</p></details>
   </div>

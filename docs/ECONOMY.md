@@ -55,6 +55,15 @@ force; on the reference host (a desktop Intel i7-14700K) that is the engine
 budget rather than metabolism until the engine gets faster. Buying in still
 raises metabolism; it raises the population only as far as compute allows.
 
+The cage refills. Founders die (the genesis probe loses three of eight by
+tick 3,000) and reproduction needs a partner, so when the population has
+sat below half the capacity for 600 ticks, new founders join to bring it
+back to capacity: each is a birth like any other, minted and offered at the
+founder price, its rent paid by the operator. A world whose metabolism has
+bought 20 slots therefore keeps something near 20 flies in the cage, not
+two; a larger metabolism is a fuller cage. The refill is a journaled input
+(`gen`), so a replay reproduces it at the same tick.
+
 ## Earning by living
 
 Every epoch (2,400 ticks, four minutes) the world scores each living fly on

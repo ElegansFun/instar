@@ -139,6 +139,9 @@ async function loadCensusHeader() {
     $("rc-world").innerHTML = link("address", live.worldPda, live, 44);
     $("rc-operator").innerHTML = link("address", live.operator, live, 44);
     setText("rc-seed", live.seed);
+    const b = config.build || {};
+    $("rc-commit").innerHTML = b.commit ? `<a class="chain" href="https://github.com/InstarCage/instar/commit/${esc(b.commit)}" target="_blank" rel="noopener">${esc(b.commit.slice(0, 12))}</a>${b.dirty ? ' <span class="bad">with uncommitted changes</span>' : ""}` : `<span class="faint">unstamped build</span>`;
+    setText("rc-wasm", b.wasmSha256 || "\u2014");
     const vd = verifierLine(live);
     $("rc-verified").innerHTML = vd
       ? `<span class="${vd.cls === "ok" ? "chain-c" : "bad"}">${vd.word}</span> ${esc(vd.detail)}; epoch ${vd.epoch}, hash ${esc(vd.hash)}`

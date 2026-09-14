@@ -33,6 +33,7 @@ export type WorldContext = {
   cluster: Cluster;
   googleClientId: string;
   coin: { mint: string | null; creator: string | null };
+  build: { commit: string | null; dirty: boolean; at: string | null; wasmSha256: string; censusRoot: string };
   publicUrl: string;
   corsOrigin: string;
   siteDir: string;
@@ -547,7 +548,7 @@ function handler(ctx: WorldContext) {
         if (route === "/api/config") {
           return json(200, {
             cluster: ctx.cluster, googleClientId: ctx.googleClientId, programId: ctx.chain.programId.toBase58(),
-            publicUrl: ctx.publicUrl, coin: ctx.coin,
+            publicUrl: ctx.publicUrl, coin: ctx.coin, build: ctx.build,
             worldPda: ctx.chain.worldPda.toBase58(), collection: ctx.world()?.collection.toBase58() ?? null,
             explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
             // The PUBLIC endpoint, never the configured one: that may carry a

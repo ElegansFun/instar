@@ -12,6 +12,7 @@
 //   npm run world
 
 import * as fs from "fs";
+import { createHash } from "crypto";
 import * as path from "path";
 import * as zlib from "zlib";
 import { promisify } from "util";
@@ -58,11 +59,16 @@ const MAX_CAPACITY = MAX_POP;
 /// below MIN_ENGINE_BUDGET, so a slow host still keeps a breeding population.
 const ENGINE_BUDGET_MS = 80;
 const MIN_ENGINE_BUDGET = 8;
-/// Reproduction needs a partner, so a population below MIN_POP can never
-/// recover on its own. After this many consecutive ticks below it, founders
-/// are added (spawn_founders fills free slots; survivors stay) up to START_POP.
+/// Reproduction needs a partner, and the economy's capacity is what the cage
+/// is meant to hold. When the population has sat below half of it (never
+/// below MIN_POP) for this many consecutive ticks, founders join to bring it
+/// back to capacity. Each is a birth like any other, minted and offered, and
+/// its rent comes from the operator, so the cage grows exactly as far as
+/// metabolism says and no further.
 const MIN_POP = 2;
 const REGENESIS_AFTER_TICKS = 600;
+const refillTarget = (capacity: number) => Math.max(START_POP, capacity);
+const refillFloor = (capacity: number) => Math.max(MIN_POP, Math.ceil(refillTarget(capacity) / 2));
 /// Life rewards settle every Nth epoch. Scoring happens every epoch; paying
 /// out every two minutes would cost more in fees than the payouts are worth.
 const REWARD_EVERY_EPOCHS = 8;
@@ -133,8 +139,21 @@ async function buildWorld() {
   const t0 = Date.now();
   const graph = loadGraph(path.join(CANON, "male-cns-v1.0.census.cbg"), path.join(CANON, "male-cns-v1.0.nodes.json"));
   log(`census ${graph.nodes.dataset_id} root ${graph.root.slice(0, 16)}… — ${graph.nodeCount} neurons, ${graph.edgeCount} connections read in ${Date.now() - t0} ms`);
-  const engine = await Engine.load(path.join(SITE_DIR, "instar_sim.wasm"), graph, MAX_POP);
+  const WASM = path.join(SITE_DIR, "instar_sim.wasm");
+  const engine = await Engine.load(WASM, graph, MAX_POP);
   log(`engine: ${engine.nodeCount} neurons, ${engine.edgeCount} connections, ${MAX_POP} slots, ${(engine.heapBytes / 1e6).toFixed(0)} MB allocated`);
+  // What is running, stated so it can be checked: the engine's bytes hash
+  // (anyone can rebuild the commit and compare) and the commit itself, from
+  // site/build.json when the deploy wrote one (npm run stamp).
+  const build: { commit: string | null; dirty: boolean; at: string | null; wasmSha256: string; censusRoot: string } = {
+    commit: null, dirty: false, at: null,
+    wasmSha256: createHash("sha256").update(fs.readFileSync(WASM)).digest("hex"), censusRoot: graph.root,
+  };
+  try {
+    const stamp = JSON.parse(fs.readFileSync(path.join(SITE_DIR, "build.json"), "utf8"));
+    if (typeof stamp.commit === "string") Object.assign(build, { commit: stamp.commit, dirty: !!stamp.dirty, at: stamp.at ?? null });
+  } catch { /* unstamped build: the commit stays unknown rather than guessed */ }
+  log(`build ${build.commit ? build.commit.slice(0, 10) + (build.dirty ? " (dirty)" : "") : "unstamped"}  engine sha256 ${build.wasmSha256.slice(0, 16)}…`);
 
   // ---------- chain ----------
   const operator = loadKeypair(operatorFile);
@@ -720,12 +739,13 @@ async function buildWorld() {
       epochCost.ms = 0; epochCost.flyTicks = 0;
     }
     const pop = engine.popCount;
-    if (pop < MIN_POP) {
+    if (pop < refillFloor(capacity)) {
       if (lowSince < 0) lowSince = tick;
       const pending = journal.entries.some(e => e.type === "gen" && e.tick > tick);
       if (!pending && tick - lowSince > REGENESIS_AFTER_TICKS) {
-        store.addEntry({ tick: tick + BUFFER_TICKS, type: "gen", n: START_POP - pop });
-        log(`population ${pop} — re-genesis scheduled: ${START_POP - pop} founder(s) join at tick ${tick + BUFFER_TICKS}`);
+        const n = refillTarget(capacity) - pop;
+        store.addEntry({ tick: tick + BUFFER_TICKS, type: "gen", n });
+        log(`population ${pop} under ${refillFloor(capacity)} — ${n} founder(s) join at tick ${tick + BUFFER_TICKS} (capacity ${capacity})`);
       }
     } else lowSince = -1;
     journal.tick = tick;
@@ -824,7 +844,7 @@ async function buildWorld() {
   await refreshChain().catch(e => log("initial chain read: " + String(e?.message ?? e).slice(0, 120)));
 
   return {
-    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin,
+    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin, build,
     corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT, dataDir: DATA_DIR, adminToken: ADMIN_TOKEN,
     chain, store, engine, accounts, ops, log, bufferTicks: BUFFER_TICKS,
     tick: () => tick, capacity: () => capacity, lastEpoch: () => lastEpoch,
