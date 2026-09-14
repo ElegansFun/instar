@@ -83,7 +83,7 @@ Send it about **0.05 SOL** once, from the operator key:
     npx tsx scripts/operator.mts fund-fee-keypair 50000000 --yes
 
 `npm run preflight` fails while it holds less than 0.02 SOL. Afterwards the
-world keeps `INSTAR_GAS_RESERVE` (default 0.05 SOL, never below 0.003) in
+world keeps `INSTAR_GAS_RESERVE` (default 0.05 SOL; preflight warns below 0.003) in
 it out of every claim, and when a claim is skipped for lack of SOL the log
 says so in one line: `fee keypair needs SOL for claims (has X, needs about Y)`.
 

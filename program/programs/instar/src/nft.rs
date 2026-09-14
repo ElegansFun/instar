@@ -1,6 +1,6 @@
-//! Every larva is a Metaplex Core asset in the world's collection, and the
+//! Every fly is a Metaplex Core asset in the world's collection, and the
 //! asset's `owner` is the one truth about who keeps it. The World PDA owns
-//! unsold larvae, is the collection's update authority, and holds the three
+//! unsold flies, is the collection's update authority, and holds the three
 //! permanent plugin authorities that let the program move, freeze and burn an
 //! asset a keeper owns: sale to a buyer, a cull request, and death.
 
@@ -159,10 +159,10 @@ impl<'a, 'info> Core<'a, 'info> {
     }
 }
 
-/// A living larva's asset as Anchor loads it: a Core-owned account keyed
+/// A living fly's asset as Anchor loads it: a Core-owned account keyed
 /// `AssetV1`. Core does not delete a burned asset, it leaves a one-byte
 /// `Uninitialized` stub behind, so an account that no longer reads as an
-/// asset is a dead larva and loading it is `WrongStatus`. Never written back:
+/// asset is a dead fly and loading it is `WrongStatus`. Never written back:
 /// Core owns it, and Anchor only reserialises what the program owns.
 #[derive(Clone)]
 pub struct LarvaAsset(BaseAssetV1);
@@ -205,7 +205,7 @@ impl Owner for LarvaAsset {
 /// What a settlement finds at `creature.asset`: the living asset's owner, or
 /// `None` where the owner has already burned it natively. Core does not
 /// delete a burned asset, it leaves a one-byte `Uninitialized` stub it still
-/// owns; such a larva has no keeper and nothing left to burn. Any other key
+/// owns; such a fly has no keeper and nothing left to burn. Any other key
 /// is not an asset of ours. The owner is the 32 bytes after the key in the
 /// versioned `AssetV1` layout; the name and uri behind it are not needed and
 /// not decoded.

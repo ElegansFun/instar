@@ -31,7 +31,7 @@ pub struct RegisterBirth<'info> {
     pub operator: Signer<'info>,
     #[account(init, payer = operator, space = Creature::SIZE, seeds = [CREATURE_SEED, &id.to_le_bytes()], bump)]
     pub creature: Account<'info, Creature>,
-    /// The larva's Core asset: a fresh keypair the client signs for.
+    /// The fly's Core asset: a fresh keypair the client signs for.
     #[account(mut)]
     pub asset: Signer<'info>,
     #[account(mut, address = world.collection @ InstarError::WrongCollection)]
@@ -41,9 +41,9 @@ pub struct RegisterBirth<'info> {
 }
 
 /// A birth in the engine becomes a permanent identity here. The engine names
-/// its larvae, not the program: the id is passed in and must be the next one,
+/// its flies, not the program: the id is passed in and must be the next one,
 /// so the journal and the chain can never disagree about who #7 is. The
-/// asset is minted to the World PDA: the dish holds larvae nobody has bought.
+/// asset is minted to the World PDA: the dish holds flies nobody has bought.
 #[allow(clippy::too_many_arguments)]
 pub fn register_birth(
     ctx: Context<RegisterBirth>,
@@ -93,9 +93,9 @@ pub struct OperatorOnCreature<'info> {
     pub asset: Account<'info, LarvaAsset>,
 }
 
-/// Put a larva the dish holds up for sale at a fixed price: a newborn, or a
-/// kept larva whose keeper sent the asset back to the World PDA with a plain
-/// Core transfer. Either way the asset must be the World PDA's; a larva in a
+/// Put a fly the dish holds up for sale at a fixed price: a newborn, or a
+/// kept fly whose keeper sent the asset back to the World PDA with a plain
+/// Core transfer. Either way the asset must be the World PDA's; a fly in a
 /// keeper's hands is sold by `list`, never by the operator.
 pub fn open_offer(ctx: Context<OperatorOnCreature>, _id: u64, price: u64) -> Result<()> {
     require!(!ctx.accounts.world.wind_down, InstarError::WindingDown);
@@ -116,8 +116,8 @@ pub struct RewardMany<'info> {
 }
 
 /// Pay a whole epoch's life rewards in one transaction, pool to vaults.
-/// A DEAD larva is skipped rather than failing the batch: deaths are settled
-/// on the same queue, so a larva dying between scoring and landing is ordinary
+/// A DEAD fly is skipped rather than failing the batch: deaths are settled
+/// on the same queue, so a fly dying between scoring and landing is ordinary
 /// and must not cost everyone else their epoch.
 pub fn reward_many<'info>(ctx: Context<'_, '_, 'info, 'info, RewardMany<'info>>, amounts: Vec<u64>) -> Result<()> {
     // In wind-down the pool is being swept to recovery; moving it into vaults
@@ -160,8 +160,8 @@ pub struct SettleDeath<'info> {
     #[account(mut, address = world.collection @ InstarError::WrongCollection)]
     pub collection: Account<'info, BaseCollectionV1>,
     /// The credit of whoever owns the asset at settlement. Present whenever
-    /// the larva has a keeper; a WILD or OFFERED larva is the World PDA's own
-    /// and passes none, as does a larva whose keeper burned the asset. The
+    /// the fly has a keeper; a WILD or OFFERED fly is the World PDA's own
+    /// and passes none, as does a fly whose keeper burned the asset. The
     /// seed is spelled as an indexed byte array so the IDL builder, which can
     /// only describe constants, arguments and account fields, leaves the PDA
     /// undescribed instead of emitting the expression into the IDL.
@@ -183,7 +183,7 @@ pub struct SettleDeath<'info> {
 /// and keeper. In wind-down the whole vault is the keeper's, as it would be
 /// through `reclaim_vault`. The keeper is whoever owns the asset now; the
 /// asset is burned at the end. A keeper who already burned it natively
-/// forfeited the keeper share, which goes to metabolism as for a larva nobody
+/// forfeited the keeper share, which goes to metabolism as for a fly nobody
 /// kept.
 pub fn settle_death<'info>(
     ctx: Context<'_, '_, 'info, 'info, SettleDeath<'info>>,
@@ -294,7 +294,7 @@ pub struct OwnerOnCreature<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// The keeper asks for the larva to be culled. The engine kills it at a
+/// The keeper asks for the fly to be culled. The engine kills it at a
 /// deterministic tick and the operator settles it; if the operator never
 /// comes, `force_settle_cull` after CULL_TIMEOUT. The asset is frozen so it
 /// cannot leave the dish in the meantime; the settlement burns it.

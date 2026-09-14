@@ -153,6 +153,8 @@ volume (never bake them into the image):
 | `DATA_DIR` | a persistent volume (`/data`); journal, snapshot (`snapshot.bin.gz`, ~150 MB, rewritten every five minutes), accounts and sessions live here |
 | `PUBLIC_URL` | the public origin: written into every fly's NFT as its metadata URI at birth, and into the collection at `init_world`. Fix it before the first birth and never change it; a moved host keeps serving under the same domain, or older NFTs point at a dead address |
 | `INSTAR_GAS_RESERVE` | SOL the operator keeps for fees before it pauses settlement (default 0.05) |
+| `INSTAR_TRUST_PROXY` | `1` behind a reverse proxy that overwrites `X-Forwarded-For` (Railway): the sign-in rate limit is keyed by client IP, and without it every visitor shares the proxy's address |
+| `INSTAR_ADMIN_TOKEN` | a long random string; enables `GET /api/backup` and the verifier's `--post`, accepted only as an `Authorization: Bearer` header |
 | `GOOGLE_CLIENT_ID` | optional; enables Google sign-in |
 | `INSTAR_FRESH` | `1` once, on the very first boot against this program; remove afterwards |
 
@@ -209,5 +211,6 @@ twice.
 **The volume is lost.** The journal is the world's memory; without it the
 process refuses to continue against a program that already holds flies. Set
 `INSTAR_ADMIN_TOKEN` and pull a backup hourly from a machine that is not the
-host: `INSTAR_ADMIN_TOKEN=… npx tsx scripts/backup.mts --pull https://your.domain`.
+host: `INSTAR_ADMIN_TOKEN=… npx tsx scripts/backup.mts --pull https://your.domain`
+(the script sends the token as a Bearer header; the route takes no `?token=`).
 That, and the rest of the world's life, is in `docs/OPERATIONS.md`.

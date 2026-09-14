@@ -88,7 +88,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>Instar brand</title><s
 <div data-asset="banner-x-1500x500" style="width:1500px;height:500px">
   <div class="mono" style="position:absolute;left:100px;top:64px;font-size:18px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; Solana</div>
   <div style="position:absolute;left:96px;top:118px;width:900px">
-    <div class="serif" style="font-size:96px">A cage of flies,<br>each driven by a complete<br><i>wiring diagram.</i></div>
+    <div class="serif" style="font-size:96px">A cage of flies,<br>each driven by every neuron<br>of a <i>complete nervous system.</i></div>
   </div>
   <div style="position:absolute;right:56px;top:-6px;width:520px;height:520px;transform:rotate(-8deg)">${plate()}</div>
 </div>
@@ -101,7 +101,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>Instar brand</title><s
   </div>
   <div class="rule" style="top:140px;left:72px;right:72px"></div>
   <div style="position:absolute;left:72px;top:190px;width:760px">
-    <div class="serif" style="font-size:78px">A cage of flies,<br>each driven by a complete<br><i>wiring diagram.</i></div>
+    <div class="serif" style="font-size:78px">A cage of flies,<br>each driven by every neuron<br>of a <i>complete nervous system.</i></div>
   </div>
   <div class="mono" style="position:absolute;left:72px;bottom:56px;font-size:16px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; every fly a Core NFT on Solana</div>
   <div style="position:absolute;right:40px;top:120px;width:470px;height:470px;transform:rotate(-8deg)">${plate()}</div>
@@ -118,7 +118,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>Instar brand</title><s
     <div style="width:560px;height:560px">${plate()}</div>
   </div>
   <div style="position:absolute;left:72px;right:72px;top:740px">
-    <div class="serif" style="font-size:60px">A cage of flies, each driven by<br>a complete <i>wiring diagram.</i></div>
+    <div class="serif" style="font-size:60px">A cage of flies, each driven by every<br>neuron of a <i>complete nervous system.</i></div>
   </div>
   <div class="mono" style="position:absolute;left:72px;bottom:56px;font-size:16px">Drosophila melanogaster &nbsp;·&nbsp; Janelia MaleCNS v1.0 &nbsp;·&nbsp; Solana</div>
 </div>

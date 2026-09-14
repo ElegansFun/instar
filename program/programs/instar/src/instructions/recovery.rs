@@ -67,8 +67,8 @@ pub struct ReclaimVault<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Take your own larva's vault. Needs no operator and no service, only that
-/// the world has ended and the asset is yours. The larva is DEAD afterwards
+/// Take your own fly's vault. Needs no operator and no service, only that
+/// the world has ended and the asset is yours. The fly is DEAD afterwards
 /// and its asset burned; the rent comes back to you.
 pub fn reclaim_vault(ctx: Context<ReclaimVault>, _id: u64) -> Result<()> {
     let world = &mut ctx.accounts.world;
@@ -157,7 +157,7 @@ pub struct CloseRecord<'info> {
 
 /// Return a creature record's rent to recovery. Only after escheat, when the
 /// record backs no money; whatever its status. The Core asset is not touched:
-/// a kept larva's asset stays with its keeper as a collectible, a dead one's
+/// a kept fly's asset stays with its keeper as a collectible, a dead one's
 /// is already a burned stub.
 pub fn close_record(ctx: Context<CloseRecord>, _id: u64) -> Result<()> {
     let world = &mut ctx.accounts.world;

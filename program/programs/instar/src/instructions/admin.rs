@@ -18,7 +18,7 @@ pub struct InitWorld<'info> {
     pub world: Account<'info, World>,
     #[account(mut)]
     pub operator: Signer<'info>,
-    /// The Core collection every larva will belong to: a fresh keypair the
+    /// The Core collection every fly will belong to: a fresh keypair the
     /// client generates and signs for, as Core requires of a new account.
     #[account(mut)]
     pub collection: Signer<'info>,
@@ -153,7 +153,7 @@ pub struct Fund<'info> {
 }
 
 /// Money from outside the market: the coin's creator-fee stream, or anyone who
-/// wants to feed the world. Metabolism sets how many larvae the world carries;
+/// wants to feed the world. Metabolism sets how many flies the world carries;
 /// the pool pays the ones living well. The caller states the split. A world
 /// that is winding down takes no new money: its ledger is being emptied, and
 /// fresh lamports would only end up backing stale claims.

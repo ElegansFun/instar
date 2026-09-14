@@ -49,7 +49,7 @@ unless stated, generation zero running the published synapse counts:
 | ticks spent feeding, real genome vs every synapse zeroed | **9.0% vs 0.0%** |
 | takeoffs per fly-hour at 10 ticks/s, real vs zeroed | **97 vs 0** (9.6% of fly-ticks in flight) |
 | a cage of zeroed-genome flies | **extinct by tick 4,000** |
-| the real line at 12,000 ticks | **7 alive, 12 births, generation 2**; leg motor neurons fire on 88.6% of its walking ticks (zeroed: 0%) |
+| the real line at 12,000 ticks | leg motor neurons fire on **88.6%** of its walking ticks (zeroed: 0%) |
 | engine cost | **2.8 ms per fly-tick**; 40 flies is 113 ms per tick on one core (i7-14700K) |
 
 The last line is why the world runs at 10 ticks per second and carrying

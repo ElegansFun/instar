@@ -53,9 +53,10 @@ than 15 minutes. Both are conditions a restart does not fix, so a supervisor
 that restarts on 503 should do so with a bounded retry (Railway's
 `ON_FAILURE`, 10 retries): the restart is harmless (the journal resumes the
 queue), and the alert is what matters. At deploy time a 503 blocks the
-rollout: `healthcheckTimeout` is 600 s, which covers a replay from genesis of
-a long-lived journal; a deploy made while the RPC is down fails, and that is
-the right answer.
+rollout: `healthcheckTimeout` is 600 s, which covers a resume from a recent
+snapshot; a replay from genesis runs about as fast as the world lived and
+would outrun it (keep the snapshot; see "When the process dies"). A deploy
+made while the RPC is down fails, and that is the right answer.
 
 `npx tsx scripts/operator.mts status` prints the World account, the operator
 and recovery balances, the heartbeat age against the 90-day abandonment
@@ -81,23 +82,26 @@ In the logs, every line is prefixed `[instar]`. The ones that need a person:
 ## Backups
 
 ```
-INSTAR_ADMIN_TOKEN=<the world's> npx tsx scripts/backup.mts --pull https://your.domain   # from anywhere -> backups/instar-<cluster>-<iso>.tgz
+INSTAR_ADMIN_TOKEN=<the world's> npx tsx scripts/backup.mts --pull https://your.domain   # from anywhere -> backups/instar-<cluster>-<iso>.tgz; sends the token as a Bearer header
 npx tsx scripts/backup.mts                                                               # from the files in DATA_DIR, on the host
 npx tsx scripts/backup.mts --list <file>
 ```
 
 The archive is a gzipped ustar tar (`tar tzf` opens it) of `DATA_DIR`:
 `journal.json` (the replayable record and the op queue) and its `.bak`,
-`snapshot.bin.gz`, `accounts.json` and its `.bak`, `sessions.json`,
-`genesis.lock` and the quarantine file. Two ways to take one:
+`snapshot.bin.gz`, `accounts.json` and its `.bak`, `genesis.lock` and the
+quarantine file. `sessions.json` is not in it: sessions are short-lived and
+stored as token hashes, and a restored world simply asks keepers to sign in
+again. Two ways to take one:
 
 - **`--pull`** asks the running world for it: `GET /api/backup` refreshes
   the snapshot on disk if it is more than a minute old, serializes the
   journal right after, and packs the two with the rest (so the pair always
   resumes rather than replays). The archive is a little over the snapshot's
   size (~150 MB at 40 flies; the engine memory is ~0.6 GB raw, gzipped). The route exists only when the process has
-  `INSTAR_ADMIN_TOKEN` set, takes the token as `?token=` or a bearer header
-  (`--pull` sends the header), and answers 403 to anything else. This is the
+  `INSTAR_ADMIN_TOKEN` set, takes the token as an `Authorization: Bearer`
+  header only (never `?token=`, which a log could keep; `--pull` sends the
+  header), and answers 403 to anything else. This is the
   mainnet backup: run it **from outside the host** — a cron on another
   machine, hourly — because on Railway the container disk is gone at every
   deploy and the volume is the thing being backed up.
@@ -194,17 +198,18 @@ The journal is written right after each image so the pair agrees.
 `GET /api/snapshot` streams the five-minute file as it is on disk. It never
 triggers a copy or a gzip: the only requests that refresh the image first
 (when it is older than a minute) are `GET /api/backup` and `/api/snapshot`
-with the admin token (`?token=` or bearer), because the copy stalls the
+with the admin token (Bearer header), because the copy stalls the
 tick loop for the 0.6 GB memcpy and the gzip takes seconds of CPU.
 `GET /api/snapshot?epoch=N` streams the retained pre-boundary image of
 epoch N (404 when it is not one of the two kept; `/api/journal.snapshotEpochs`
 lists them). Both are for the verifiers and mirrors, not browsers.
 
 ```
-INSTAR_URL=https://your.domain npx tsx scripts/verify-epoch.mts [--rpc URL] [--post] [--next]
+npm run verify:epoch -- --world https://your.domain    # [--rpc URL] [--post] [--next]; INSTAR_URL=… works too on a POSIX shell
 ```
 
-is the public verification path. It reads the World account raw from the
+is the public verification path. It needs a checkout with `data/canonical`,
+`npm install`, about 1.5 GB of memory and about a minute. It reads the World account raw from the
 RPC at the offsets `/api/config` publishes and, when the epoch the account
 holds is one the world retains, fetches `/api/snapshot?epoch=N`, boots the
 same `site/instar_sim.wasm` over the same `data/canonical` files from the
@@ -222,7 +227,7 @@ world is lying. With `--post` and the world's `INSTAR_ADMIN_TOKEN` the
 verdict is written to `/api/journal.verifier`: date, epoch, hash, verdict,
 the set of distinct epochs that verified (a re-run of the same epoch adds
 nothing) and the verdict per epoch, so a MISMATCH stays on the record. Run
-it from a cron beside the backup pull. It needs about 1.5 GB of memory.
+it from a cron beside the backup pull.
 
 ## The operator balance
 
@@ -260,6 +265,13 @@ with settlement backing off a minute at a time.
 `/api/config` never reveals `INSTAR_RPC`; the site reads the public endpoint
 for its own verification, and that one may be slow without affecting the
 world.
+
+Behind a reverse proxy (Railway) set `INSTAR_TRUST_PROXY=1`: the sign-in
+rate limit and the one-snapshot-per-client rule are keyed by client IP, and
+without it every request carries the proxy's address, so one visitor's
+failed sign-ins or open download lock everyone out. Set it only behind a
+proxy that overwrites `X-Forwarded-For`; the world keys on the last element,
+the one the proxy itself appended.
 
 ## When the process dies
 
@@ -370,11 +382,13 @@ npx tsx scripts/operator.mts recover-all --to <recovery> --yes     # run it as o
 2. `begin_wind_down` (`recover-all` step 1, or `begin-wind-down --yes`).
    From this slot the program refuses every birth, offer, sale, reward and
    `fund`; the process logs `THE WORLD IS WINDING DOWN` and stops queueing
-   new life. Deaths and epochs still settle, so leave it running: every
-   death moves a vault into credits keepers can withdraw.
-3. Keepers exit on their own: `reclaim_vault` (the site's button) turns a
-   living fly's vault into their credit and burns the asset; `withdraw`
-   takes credit out. Tell them, and give them the 180 days.
+   new life. Deaths and epochs still settle, so leave it running: a death
+   settled in wind-down credits the whole vault to its keeper.
+3. Keepers exit on their own: `reclaim_vault`, sent from the wallet that
+   holds the asset (there is no site button yet; a custodial keeper
+   withdraws the fly to a wallet first), turns a living fly's vault into
+   their credit and burns the asset; `withdraw` takes credit out. Tell them,
+   and give them the 180 days.
 4. `sweep_to_recovery` (step 2): metabolism and pool to the recovery
    address. Anyone may send this; it touches no vault or credit.
 5. After 180 days: `escheat` (step 3). Everything above rent goes to

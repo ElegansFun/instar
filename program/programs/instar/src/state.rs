@@ -8,14 +8,14 @@ pub const CREDIT_SEED: &[u8] = b"credit";
 
 pub const BPS: u64 = 10_000;
 
-/// Primary sale: most of the price is seeded into the larva itself.
+/// Primary sale: most of the price is seeded into the fly itself.
 pub const BUY_TO_VAULT_BPS: u64 = 6000;
 pub const BUY_TO_METABOLISM_BPS: u64 = 1500;
 pub const BUY_TO_POOL_BPS: u64 = 1500;
 /// Ancestry royalty; only a parent that is still OWNED receives it.
 pub const BUY_TO_PARENT_BPS: u64 = 1000;
 
-/// Resale: the vault travels with the larva, so the price is only the premium.
+/// Resale: the vault travels with the fly, so the price is only the premium.
 pub const RESALE_TO_SELLER_BPS: u64 = 9000;
 pub const RESALE_TO_METABOLISM_BPS: u64 = 500;
 pub const RESALE_TO_POOL_BPS: u64 = 500;
@@ -52,7 +52,7 @@ pub const CULL_TIMEOUT: i64 = 7 * 86_400;
 /// A listing expires: the program cannot see a plain Core transfer, so a
 /// listing made by A, voided by the asset leaving A's hands, would come back
 /// to life the moment the asset returned to A, at a price A consented to for
-/// a larva that has since kept earning. After this long it has to be made again.
+/// a fly that has since kept earning. After this long it has to be made again.
 #[cfg(not(feature = "short-timers"))]
 pub const LISTING_MAX_AGE: i64 = 30 * 86_400;
 
@@ -73,7 +73,7 @@ pub struct World {
     /// Where an abandoned world's money goes. Fixed before the first lamport
     /// arrives; only a live operator may move it, never anyone in wind-down.
     pub recovery: Pubkey,
-    /// The Metaplex Core collection every larva's asset belongs to. The World
+    /// The Metaplex Core collection every fly's asset belongs to. The World
     /// PDA is its update authority.
     pub collection: Pubkey,
     pub next_id: u64,
@@ -83,7 +83,7 @@ pub struct World {
     pub last_state_hash: [u8; 32],
     /// Treasury that sets carrying capacity.
     pub metabolism: u64,
-    /// Treasury that pays living larvae every epoch.
+    /// Treasury that pays living flies every epoch.
     pub pool: u64,
     /// Sum of every creature's vault. The world cannot read every creature in
     /// one transaction, so the total is carried here and moved with each vault.
@@ -139,16 +139,16 @@ pub struct Creature {
     pub birth_tick: u64,
     pub death_tick: u64,
     pub genome_hash: [u8; 32],
-    /// The Metaplex Core asset that is this larva. Its `owner` is the keeper;
+    /// The Metaplex Core asset that is this fly. Its `owner` is the keeper;
     /// the World PDA holds it while WILD or OFFERED. Kept after the burn as the
-    /// record of which asset the larva was.
+    /// record of which asset the fly was.
     pub asset: Pubkey,
-    /// Who listed the larva for resale; default when it is not listed. A
+    /// Who listed the fly for resale; default when it is not listed. A
     /// listing is void once the asset has left that keeper's hands, and
     /// expires LISTING_MAX_AGE after `listed_at`.
     pub listed_by: Pubkey,
     pub listed_at: i64,
-    /// Lamports the larva has earned and holds, backed by the World account.
+    /// Lamports the fly has earned and holds, backed by the World account.
     pub vault: u64,
     /// OFFERED: the primary price. OWNED: the resale price, 0 = not listed.
     pub sale_price: u64,

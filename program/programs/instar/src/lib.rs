@@ -1,9 +1,9 @@
-//! Instar: the permanent record of a world of larvae whose brains are the
-//! Winding et al. 2023 larval connectome.
+//! Instar: the permanent record of a world of flies whose brains are the
+//! Janelia MaleCNS adult connectome.
 //!
 //! The simulation runs off-chain in a deterministic engine; nothing could run
 //! it here. What lives on chain is everything that has to be permanent and
-//! checkable: each larva's identity and ancestry as a Metaplex Core asset in
+//! checkable: each fly's identity and ancestry as a Metaplex Core asset in
 //! the world's collection, the lamports it earns, the market it trades in,
 //! and a state hash committed every epoch so anyone replaying the engine can
 //! verify the operator is not lying.

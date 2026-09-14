@@ -1,5 +1,5 @@
 //! The market: primary sale, listing, resale, and the pull-payment exit for
-//! everything a human is owed. A keeper hands a larva on with a plain Core
+//! everything a human is owed. A keeper hands a fly on with a plain Core
 //! transfer of the asset; the program has no instruction for that.
 
 use anchor_lang::prelude::*;
@@ -31,7 +31,7 @@ pub struct Buy<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Buy a newborn. Most of the price is seeded into the larva itself and a
+/// Buy a newborn. Most of the price is seeded into the fly itself and a
 /// tenth goes to its parent if the parent is still kept; otherwise the pool
 /// keeps that share rather than it being stranded. The buyer states the price
 /// they saw so an offer changed under them cannot charge more. The asset
@@ -42,7 +42,7 @@ pub fn buy(ctx: Context<Buy>, _id: u64, price: u64) -> Result<()> {
     require!(c.status == STATUS_OFFERED, InstarError::NotForSale);
     require_keys_eq!(ctx.accounts.asset.owner, ctx.accounts.world.key(), InstarError::NotForSale);
     require!(price == c.sale_price, InstarError::WrongPrice);
-    // A larva with a parent must be bought with that parent's record in hand,
+    // A fly with a parent must be bought with that parent's record in hand,
     // or a raw client could route the ancestry royalty away from a kept parent.
     require!(c.parent_id == NO_PARENT || ctx.accounts.parent.is_some(), InstarError::WrongId);
     deposit(&ctx.accounts.buyer, &ctx.accounts.world, &ctx.accounts.system_program, price)?;
@@ -89,12 +89,12 @@ pub struct Listing<'info> {
     pub asset: Account<'info, LarvaAsset>,
 }
 
-/// Offer your larva for resale. Only the asset's current owner may.
+/// Offer your fly for resale. Only the asset's current owner may.
 pub fn list(ctx: Context<Listing>, _id: u64, price: u64) -> Result<()> {
     require_keys_eq!(ctx.accounts.asset.owner, ctx.accounts.signer.key(), InstarError::NotOwner);
     let c = &mut ctx.accounts.creature;
     require!(c.status == STATUS_OWNED, InstarError::WrongStatus);
-    // a cull cannot be cancelled, so a larva awaiting one is not sold to anyone
+    // a cull cannot be cancelled, so a fly awaiting one is not sold to anyone
     require!(!c.pending_cull, InstarError::WrongStatus);
     require!(price > 0, InstarError::WrongPrice);
     c.sale_price = price;
@@ -126,7 +126,7 @@ pub struct BuyListed<'info> {
     pub asset: Account<'info, LarvaAsset>,
     #[account(mut, address = world.collection @ InstarError::WrongCollection)]
     pub collection: Account<'info, BaseCollectionV1>,
-    /// The seller's credit: the keeper who listed the larva.
+    /// The seller's credit: the keeper who listed the fly.
     #[account(
         init_if_needed,
         payer = buyer,
@@ -139,10 +139,10 @@ pub struct BuyListed<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Buy a larva from its current keeper. The vault travels with it, so the
-/// buyer is paying for what the larva has already earned. A listing is only
+/// Buy a fly from its current keeper. The vault travels with it, so the
+/// buyer is paying for what the fly has already earned. A listing is only
 /// good while the asset is still in the lister's hands and for LISTING_MAX_AGE
-/// after it was made: a larva that was moved with a plain Core transfer since
+/// after it was made: a fly that was moved with a plain Core transfer since
 /// is not for sale, nor is one whose old listing would revive on its way back.
 /// The World PDA moves the asset as permanent transfer delegate.
 pub fn buy_listed(ctx: Context<BuyListed>, _id: u64, price: u64) -> Result<()> {
