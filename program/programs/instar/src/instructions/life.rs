@@ -177,12 +177,14 @@ pub struct SettleDeath<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Settle a death. Cause 6 with a pending cull is the keeper's own request and
-/// pays them most of the vault; anything else is the world taking its course
-/// and the estate is split between heirs, treasuries and keeper. The keeper
-/// is whoever owns the asset now; the asset is burned at the end. A keeper
-/// who already burned it natively forfeited the keeper share, which goes to
-/// metabolism as for a larva nobody kept.
+/// Settle a death. A pending cull is the keeper's own request, whatever cause
+/// the engine records, and pays them most of the vault; anything else is the
+/// world taking its course and the estate is split between heirs, treasuries
+/// and keeper. In wind-down the whole vault is the keeper's, as it would be
+/// through `reclaim_vault`. The keeper is whoever owns the asset now; the
+/// asset is burned at the end. A keeper who already burned it natively
+/// forfeited the keeper share, which goes to metabolism as for a larva nobody
+/// kept.
 pub fn settle_death<'info>(
     ctx: Context<'_, '_, 'info, 'info, SettleDeath<'info>>,
     id: u64,
@@ -196,6 +198,8 @@ pub fn settle_death<'info>(
     require!(c.status != STATUS_DEAD, InstarError::WrongStatus);
     let owner = settled_owner(&ctx.accounts.asset)?;
     let keeper = owner.filter(|owner| *owner != ctx.accounts.world.key());
+    // a credit for the World PDA could never be closed
+    require!(keeper.is_some() || ctx.accounts.keeper_credit.is_none(), InstarError::WrongId);
     let estate = c.vault;
     c.vault = 0;
     c.clear_listing();
@@ -208,7 +212,9 @@ pub fn settle_death<'info>(
 
     let mut to_keeper: u64 = 0;
     if estate > 0 {
-        if cause == CAUSE_CULLED && c.pending_cull {
+        if world.wind_down {
+            to_keeper = estate;
+        } else if c.pending_cull {
             to_keeper = bps(estate, CULL_TO_KEEPER_BPS)?;
             world.metabolism = add(world.metabolism, sub(estate, to_keeper)?)?;
         } else {
@@ -219,9 +225,14 @@ pub fn settle_death<'info>(
 
             if heir_count > 0 {
                 let each = to_heirs / heir_count as u64;
+                // offspring are born after their parent, so ids only climb from here;
+                // strict order also rules out the same heir account twice
+                let mut last_id = id;
                 for info in &ctx.remaining_accounts[..heir_count] {
                     let mut heir = load_creature(info)?;
-                    require!(heir.id != id && heir.alive(), InstarError::WrongStatus);
+                    require!(heir.alive(), InstarError::WrongStatus);
+                    require!(heir.parent_id == id && heir.id > last_id, InstarError::WrongId);
+                    last_id = heir.id;
                     heir.vault = add(heir.vault, each)?;
                     heir.exit(&crate::ID)?;
                 }

@@ -49,7 +49,13 @@ export class Stream {
     this.byId = new Map();   // id -> interpolated fly (reused objects)
     this.view = [];          // the flies as of the last sample(), in frame order
     this.stallTimer = 0;
+    this.stallReopen = 0;
     this.open();
+    // a tab resumed from sleep or a switched network may have a half-open
+    // connection that never errors; coming back visible reopens it
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && this.state !== "live") this.open();
+    });
   }
 
   open() {
@@ -73,7 +79,10 @@ export class Stream {
       } else this.setState(this.frames ? "reconnecting" : "connecting");
     };
   }
-  close() { if (this.es) { this.es.close(); this.es = null; } }
+  close() {
+    clearTimeout(this.stallTimer); clearTimeout(this.stallReopen);
+    if (this.es) { this.es.close(); this.es = null; }
+  }
 
   setState(s) {
     if (this.state === s) return;
@@ -90,8 +99,13 @@ export class Stream {
     this.light = frame.light;
     this.temp = frame.temp;
     this.setState("live");
-    clearTimeout(this.stallTimer);
-    this.stallTimer = setTimeout(() => this.setState("stalled"), STALL_MS);
+    clearTimeout(this.stallTimer); clearTimeout(this.stallReopen);
+    // a stall is reported first and repaired after: a still-stalled stream
+    // is reopened, since a silently dropped connection never errors
+    this.stallTimer = setTimeout(() => {
+      this.setState("stalled");
+      this.stallReopen = setTimeout(() => { if (this.state === "stalled") this.open(); }, STALL_MS * 3);
+    }, STALL_MS);
     if (frame.events) for (const e of frame.events) {
       // the connect frame repeats the events the next timer frame also
       // carries (the world does not consume them for a new client), and a

@@ -65,7 +65,10 @@ export async function boot({ status = () => {} } = {}) {
     await new Promise(r => setTimeout(r, 2000));
     journal = await fetchJournal(6000);
   }
-  const config = journal ? await fetchConfig() : {};
+  // the config is asked for as patiently as the journal: one dropped
+  // request must not strip a page of its constants
+  let config = {};
+  for (let i = 0; i < 3 && journal && !config.arena; i++) config = await fetchConfig();
   return { journal, config };
 }
 
@@ -133,34 +136,50 @@ export function canVerifyHere() {
 }
 const CHAIN_WAIT_MS = 10 * 60_000;
 const CHAIN_POLL_MS = 5000;
+// A worker the browser kills for memory does not reliably raise onerror;
+// silence for this long after its last message is taken as that.
+const WORKER_QUIET_MS = 120_000;
 export function verifyEpochHere({ journal, config, epoch = null, status = () => {} }) {
   return new Promise((resolve, reject) => {
     const w = new Worker("./verify-worker.js", { type: "module" });
+    let lastMsg = Date.now();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastMsg < WORKER_QUIET_MS) return;
+      clearInterval(watchdog); w.terminate();
+      reject(new Error("the verifier stopped answering for two minutes; it probably ran out of memory"));
+    }, 10_000);
     w.onmessage = async (ev) => {
       const m = ev.data;
+      lastMsg = Date.now();
       if (m.type === "status") { status(m.text); return; }
-      if (m.type === "error") { w.terminate(); reject(new Error(m.text)); return; }
+      if (m.type === "error") { clearInterval(watchdog); w.terminate(); reject(new Error(m.text)); return; }
       if (m.type !== "done") return;
-      w.terminate();
-      const result = { epoch: m.epoch, tick: m.tick, local: m.hash, snapshotTick: m.snapshotTick, ticks: m.ticks, ms: m.ms, peakBytes: m.peakBytes, imageBytes: m.imageBytes, journal: null, posted: null, chain: null, onChain: null, chainError: null };
-      // the world posts the boundary's hash once its tx confirms; wait for it
-      const giveUp = Date.now() + CHAIN_WAIT_MS;
-      try {
-        for (;;) {
-          const c = await readWorldAccount(config);
-          if (c.tick === m.tick) { result.onChain = c.hash; result.chain = c.hash === m.hash; break; }
-          if (c.tick > m.tick) { result.chainError = `the chain has moved on to epoch ${c.epoch}`; break; }
-          if (Date.now() > giveUp) { result.chainError = `epoch ${m.epoch} was not posted within ten minutes (chain at ${c.epoch})`; break; }
-          status(`replayed to tick ${m.tick.toLocaleString("en-US")}: hash ${m.hash}; waiting for the world to post epoch ${m.epoch} (chain at epoch ${c.epoch})`);
-          await new Promise(r => setTimeout(r, CHAIN_POLL_MS));
-        }
-      } catch (e) { result.chainError = e.message; }
+      clearInterval(watchdog); w.terminate();
+      const result = { epoch: m.epoch, tick: m.tick, local: m.hash, snapshotTick: m.snapshotTick, ticks: m.ticks, ms: m.ms, peakBytes: m.peakBytes, imageBytes: m.imageBytes, journal: null, posted: null, chain: null, onChain: null, chainError: null, journalOnly: epoch !== null };
+      // The World account holds only the newest epoch. The next epoch is
+      // waited for there; an already-posted epoch is compared with the
+      // journal's recorded hash and its transaction, not the account.
+      if (epoch !== null) result.chainError = "the World account keeps only the newest epoch";
+      else {
+        // the world posts the boundary's hash once its tx confirms; wait for it
+        const giveUp = Date.now() + CHAIN_WAIT_MS;
+        try {
+          for (;;) {
+            const c = await readWorldAccount(config);
+            if (c.tick === m.tick) { result.onChain = c.hash; result.chain = c.hash === m.hash; break; }
+            if (c.tick > m.tick) { result.chainError = `the chain has moved on to epoch ${c.epoch}`; break; }
+            if (Date.now() > giveUp) { result.chainError = `epoch ${m.epoch} was not posted within ten minutes (chain at ${c.epoch})`; break; }
+            status(`replayed to tick ${m.tick.toLocaleString("en-US")}: hash ${m.hash}; waiting for the world to post epoch ${m.epoch} (chain at epoch ${c.epoch})`);
+            await new Promise(r => setTimeout(r, CHAIN_POLL_MS));
+          }
+        } catch (e) { result.chainError = e.message; }
+      }
       const fresh = await fetchJournal(8000);
       const posted = ((fresh || journal).epochs || []).find(e => e.epoch === m.epoch);
       if (posted) { result.posted = posted; result.journal = posted.hash === m.hash; }
       resolve(result);
     };
-    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "the verifier worker failed")); };
+    w.onerror = (e) => { clearInterval(watchdog); w.terminate(); reject(new Error(e.message || "the verifier worker failed")); };
     w.postMessage({ api: API, cbg: CBG_URL, nodes: NODES_URL, wasm: WASM_URL, epoch, journal: { entries: journal.entries, epochs: journal.epochs, epochInterval: journal.epochInterval, seed: journal.seed, era: journal.era, tick: journal.tick, bufferTicks: journal.bufferTicks } });
   });
 }
@@ -176,10 +195,20 @@ export function fillConstants(config, journal) {
     roles: config.roleCounts ? Object.keys(config.roleCounts).filter(k => +k !== 0).length : undefined,
     assigned: config.roleCounts ? Object.entries(config.roleCounts).reduce((a, [k, n]) => a + (+k === 0 ? 0 : n), 0) : undefined,
   };
+  const eco = config.economy;
+  if (eco) {
+    const sol = (l) => (Number(l) / 1e9).toString();
+    const epochMin = (journal ? journal.epochInterval : config.epochInterval) / (journal ? journal.tickrate : config.tickrate) / 60;
+    Object.assign(v, {
+      offerBase: sol(eco.offerBase), offerPerGen: sol(eco.offerPerGen), founderPrice: sol(BigInt(eco.offerBase) * BigInt(eco.founderPremium)), founderPremium: eco.founderPremium,
+      rewardEveryEpochs: eco.rewardEveryEpochs, rewardMinutes: Math.round(epochMin * eco.rewardEveryEpochs), poolPayoutPct: eco.poolPayoutBps / 100,
+      sweepMinutes: Math.round(eco.sweepIntervalMs / 60000), sweepPoolPct: eco.sweepPoolBps / 100, gasReserve: sol(eco.gasReserve),
+    });
+  }
   if (config.roleCounts) for (const [k, n] of Object.entries(config.roleCounts)) v["role" + k] = n;
   for (const el of document.querySelectorAll("[data-n]")) {
     const n = v[el.dataset.n];
-    if (n !== undefined) el.textContent = Number(n).toLocaleString("en-US");
+    if (n !== undefined) el.textContent = typeof n === "string" ? n : Number(n).toLocaleString("en-US");
   }
   for (const el of document.querySelectorAll("[data-role-label]")) el.textContent = ROLE_LABEL[+el.dataset.roleLabel] || el.dataset.roleLabel;
 }

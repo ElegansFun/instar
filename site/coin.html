@@ -95,7 +95,7 @@
     <ol class="steps">
       <li><b>A trade happens.</b> On the bonding curve pump.fun sets 0.30% of it aside for the creator; after graduation to PumpSwap the creator's share follows pump's published schedule by market cap (0.30% to 0.95%). The on-chain fee config is authoritative; the world reads what arrived, not a rate.</li>
       <li><b>The world claims it.</b> Every ten minutes the fee keypair collects from the curve vault and, after graduation, from the PumpSwap vault. Both claims are permissionless (anyone may crank them; the money still goes to the creator), and every claim is a transaction in the record below.</li>
-      <li><b>It is funded into the cage.</b> Everything above a 0.05 SOL gas reserve goes to the program: <b>50% to metabolism</b>, which sets the cage's capacity at 8 + 20 flies per SOL (up to 40), and <b>50% to the pool</b>.</li>
+      <li><b>It is funded into the cage.</b> Everything above a <span data-n="gasReserve">&mdash;</span> SOL gas reserve goes to the program: <b>50% to metabolism</b>, which sets the cage's capacity at 8 + 20 flies per SOL (up to 40), and <b>50% to the pool</b>.</li>
       <li><b>The pool pays the living.</b> Every eighth epoch a quarter of the pool is credited to the vaults of the flies alive, by how each actually lived: survival, foraging, energy, age, maturity, births, generation. A vault is its keeper's money on the way out. Fee income ends up with whoever keeps flies that live well.</li>
     </ol>
     <table class="data">

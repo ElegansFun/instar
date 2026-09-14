@@ -1,8 +1,8 @@
-# Instar: a cage of fruit flies, each driven by a complete nervous-system wiring diagram, settled on Solana
+# Instar: a cage of fruit flies, each driven by every neuron of a complete nervous system, settled on Solana
 
 [image: hero.png]
 
-Instar is a persistent world of adult fruit flies (Drosophila melanogaster) living in a glass cage on a bench. Every fly in it runs a copy of the complete connectome of one real male fly: 166,700 neurons and 6,242,118 connections, reconstructed from electron microscopy by Janelia FlyEM and published in 2026 under CC BY 4.0. Nothing about a fly's behaviour is scripted. When a fly walks to the food, takes off, lands on the lid, or breeds, that is the wiring doing it.
+Instar is a persistent world of adult fruit flies (Drosophila melanogaster) living in a glass cage on a bench. Every fly in it runs every neuron of one real male fly's complete nervous system, 166,700 neurons, and every one of its 6,242,118 connections of five or more synapses, reconstructed from electron microscopy by Janelia FlyEM and published in 2026 under CC BY 4.0. Nothing about a fly's behaviour is scripted. When a fly walks to the food, takes off, lands on the lid, or breeds, that is the wiring doing it.
 
 The world runs ten steps a second, day and night, whether or not anyone is watching. Every fly is an NFT on Solana. Every 2,400 steps the world hashes itself and posts the hash to the chain, so anyone can replay it and check that what they were shown is what happened.
 
@@ -16,7 +16,7 @@ Live: https://instarcage.com · Source: https://github.com/InstarCage/instar
 
 In 2026, Berg and colleagues at Janelia published the complete central nervous system of one adult male fruit fly: the brain, both optic lobes and the ventral nerve cord, reconstructed neuron by neuron and synapse by synapse from electron microscopy (Sexual dimorphism in the complete connectome of the Drosophila male central nervous system, Cell; preprint doi:10.1101/2025.10.09.680999). That dataset, MaleCNS v1.0, is the nervous system of every animal in the cage.
 
-The engine loads every neuron and every connection of five or more synapses between neurons proofread at both ends, verbatim, from a canonical file with a SHA-256 Merkle root. Connections of fewer than five synapses are not loaded; the file is not the whole wiring, and we never call it that.
+The engine loads every neuron and every connection of five or more synapses between neurons in Janelia's annotated neuron set, verbatim, from a canonical file with a SHA-256 Merkle root. Connections of fewer than five synapses are not loaded; the file is not the whole wiring, and we never call it that.
 
 From Janelia's own annotations the engine assigns roles to 19,460 of the neurons: which sensory neurons are olfactory, gustatory, mechanosensory, thermosensory, hygrosensory, photoreceptors; which motor neurons drive which leg on which side, the wing power and steering muscles, the halteres, the neck, the proboscis; which neurons descend from the brain to the cord, which ascend, which are neurosecretory. The other 147,240 neurons have no role and are driven purely through their wiring.
 
@@ -74,7 +74,7 @@ Reproduction is a rule, not biology: a fly with enough energy, the neurosecretor
 
 Every fly is a Metaplex Core asset in the Instar collection, minted at birth. The World program-derived address is the collection's update authority and holds permanent transfer, burn and freeze delegates on every asset, so births, sales and deaths settle by program. Ownership truth is the asset owner: whoever holds the NFT is the fly's keeper.
 
-The asset's metadata is served live by the world: a portrait, generation, lineage, status, and a link to the fly in the cage. When the fly dies the asset is burned; its record on chain is never closed.
+The asset's metadata is served live by the world: a portrait, generation, lineage, status, and a link to the fly in the cage. When the fly dies the asset is burned; its record stays on chain until the world is closed after escheat.
 
 ## 7. Where the money goes
 
@@ -88,7 +88,7 @@ A newborn is offered at 0.005 SOL plus 0.001 per generation (founders at twice t
 
 [image: rewards.png]
 
-Every epoch the world scores each living fly on how it actually lived: survival, food eaten since the last score, vitality, longevity, maturity, offspring, lineage depth, and coming through a disaster. Every eighth epoch a quarter of the pool is divided by those points into the flies' vaults. A vault is its keeper's money on the way out, so the pool ends up with whoever keeps flies that live well.
+Every eighth epoch (32 minutes) the world scores the flies alive at that moment on how they lived: survival, food eaten, vitality, longevity, maturity, offspring, lineage depth, and coming through a disaster, and divides a quarter of the pool by those points into their vaults, in batches of 20 per transaction. A fly that dies before the eighth epoch earns nothing. A vault is its keeper's money on the way out, so the pool ends up with whoever keeps flies that live well.
 
 [image: capacity.png]
 
@@ -100,11 +100,11 @@ One instruction lets the operator move the treasuries (metabolism or pool, never
 
 [image: own.png]
 
-Open the cage at https://instarcage.com/cage.html and pick a way in. An Instar account is a name and a PIN: the world holds a Solana keypair for you, encrypted under your PIN, and you can withdraw everything to any address at any time. That is custodial, and the site says so. Or connect your own wallet: the page builds each transaction from the program's IDL, your wallet signs it, and the world never sees your key.
+Open the cage at https://instarcage.com/cage.html and pick a way in. An Instar account is a name and a PIN: the world holds a Solana keypair for you, sealed under its master key (your PIN only signs you in), and you can withdraw everything to any address at any time. That is custodial, and the site says so. Or connect your own wallet: the page builds each transaction from the program's IDL, your wallet signs it, and the world never sees your key.
 
 [image: custody.png]
 
-Put in a little SOL, then buy a newborn from the Market window. It is minted to your wallet and its record names you as keeper. From the Mine window you can name its lineage, list it for resale at your price, transfer it like any NFT, ask the world to cull it, and withdraw what you are owed.
+Put in a little SOL, then buy a newborn from the Market window. It is minted to your wallet; holding the asset is what makes you its keeper. From the Mine window you can list it for resale at your price, transfer it like any NFT, ask the world to cull it, and withdraw what you are owed; with an Instar account you can also name its lineage.
 
 [image: live-market.png]
 
@@ -114,7 +114,7 @@ Put in a little SOL, then buy a newborn from the Market window. It is minted to 
 
 Every 2,400 ticks the engine hashes the whole world: population, positions, poses, genomes, and the state of every neuron it touched (FNV-1a, 64 bit). The operator posts that hash to the World account on Solana. Anyone can fetch the world's snapshot, replay the same ticks with the same engine on their own machine, hash the result, and read the account back:
 
-INSTAR_URL=https://instarcage.com npm run verify:epoch
+npm run verify:epoch -- --world https://instarcage.com
 
 It prints VERIFIED or MISMATCH. Same bytes, honest world; different bytes, caught. A desktop browser with 4 GB free can run the same replay from the cage page. The site shows the latest verdict, the latest epoch's hash and transaction, the program, the World account, the collection, the source commit the world is running, the engine's SHA-256, and the census Merkle root.
 
@@ -126,7 +126,7 @@ It prints VERIFIED or MISMATCH. Same bytes, honest world; different bytes, caugh
 
 The program was designed against one question: if the operator key were destroyed this instant and nobody ever ran the world again, can each lamport still be got out, by someone, without anyone's permission?
 
-Credits are already pull-only. After 90 days without an operator action, anyone may begin wind-down; keepers reclaim their flies' vaults as credit, and the treasuries sweep to a recovery address fixed when the world was created. After 180 days, whatever nobody came back for goes to recovery and every account closes for its rent. The operator can also wind down deliberately, any day. No lamport is stranded by design.
+Credits are already pull-only. After 90 days without an operator action, anyone may begin wind-down; keepers reclaim their flies' vaults as credit, and the treasuries sweep to a recovery address fixed when the world was created. 180 days after wind-down began (day 270 at the earliest for an abandoned world), whatever nobody came back for goes to recovery and every account closes for its rent. The operator can also wind down deliberately, any day. No lamport is stranded by design.
 
 ## 11. The coin
 

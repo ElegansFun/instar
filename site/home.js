@@ -22,20 +22,23 @@ const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north 
     setHtml("st-verify", `<b class="bad">NO WORLD</b> ${why}`);
     setHtml("lv-state", `<b class="bad">NO WORLD</b> ${why}`);
     setText("st-cluster", "none");
+    // a world that is down comes back; a deploy is the likeliest reason
+    setTimeout(main, 5000);
     return;
   }
-  if (!config.arena) throw new Error("the world did not publish its arena");
   fillConstants(config, live);
   setText("vf-url", location.origin);
 
   // ---- the cage ----
-  const cage = new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: true, onSelect: describe });
+  // without the arena the page still reads the journal; only the drawing is skipped
+  const cage = config.arena ? new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: true, onSelect: describe }) : null;
+  if (!cage) $("cage-note").textContent = "the world did not publish its arena; the cage is not drawn";
   const stream = new Stream({});
   let flies = [];
   const note = $("cage-note");
   function describe(id) {
     if (id < 0) { note.textContent = "drag to orbit \u00b7 click a fly to read it"; return; }
-    const f = cage.flyById(id);
+    const f = cage && cage.flyById(id);
     if (!f) return;
     const rec = (live.flies || []).find(l => l.id === id);
     note.textContent = `#${id} \u00b7 ${f.mode ? `flying at layer ${f.z.toFixed(1)}` : `walking on ${SURFACE_NAME[f.s] || "the cage"}`} \u00b7 energy ${fmt(f.e)}` +
@@ -48,13 +51,16 @@ const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north 
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
     flies = stream.sample(now);
-    cage.render(flies, stream.next ? stream.light : 255, dt);
+    if (cage) cage.render(flies, stream.next ? stream.light : 255, dt);
     frame++;
     const t = stream.t || live.tick;
     setText("st-tick", fmt(t));
-    setText("st-pop", flies.length);
-    setText("st-flying", flies.filter(f => f.mode === 1).length);
-    setText("lv-pop", flies.length);
+    // before the stream's first frame the journal's count is the honest one
+    const streaming = stream.state === "live" && stream.frames > 0;
+    const pop = streaming ? flies.length : (live.flies || []).filter(l => l.status !== STATUS.DEAD).length;
+    setText("st-pop", pop);
+    setText("st-flying", streaming ? flies.filter(f => f.mode === 1).length : "\u2014");
+    setText("lv-pop", pop);
     setText("lv-tick", fmt(t));
     setText("lv-epoch", fmt(Math.floor(t / live.epochInterval)));
     {
@@ -70,7 +76,7 @@ const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north 
       setHtml("st-verify", html);
       setHtml("lv-state", html);
     }
-    if (frame % 30 === 1 && cage.selected >= 0) describe(cage.selected);
+    if (cage && frame % 30 === 1 && cage.selected >= 0) describe(cage.selected);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -85,12 +91,21 @@ const SURFACE_NAME = ["the floor", "the west wall", "the east wall", "the north 
     setText("ec-cap", live.capacity);
     setText("ec-alive", (live.flies || []).filter(l => l.status !== STATUS.DEAD).length);
     setText("ec-settling", live.settling === false ? "paused: operator out of gas" : `running${live.pendingOps ? `, ${live.pendingOps} pending` : ""}`);
-    const offers = (live.flies || []).filter(l => l.status === STATUS.OFFERED).slice(0, 8);
+    const offers = (live.flies || []).filter(l => l.status === STATUS.OFFERED).sort((a, b) => (BigInt(a.salePrice) < BigInt(b.salePrice) ? -1 : BigInt(a.salePrice) > BigInt(b.salePrice) ? 1 : a.id - b.id));
     setHtml("offers-table", `<tbody>${offers.length
-      ? offers.map(l => `<tr><td>#${l.id}</td><td>gen ${l.generation}</td><td class="n">${price(l.salePrice)} SOL</td></tr>`).join("")
+      ? offers.slice(0, 8).map(l => `<tr><td><a href="./cage.html#fly=${l.id}">#${l.id}</a></td><td>gen ${l.generation}</td><td class="n">${price(l.salePrice)} SOL</td></tr>`).join("")
       : `<tr><td class="faint">no newborn is offered right now; the next birth will be</td></tr>`}</tbody>`);
-    const cheapest = offers.length ? offers.reduce((a, b) => BigInt(a.salePrice) < BigInt(b.salePrice) ? a : b) : null;
-    setText("own-price", cheapest ? `${price(cheapest.salePrice)} SOL right now` : "a few hundredths of a SOL");
+    const cheapest = offers[0] || null;
+    const eco = config.economy;
+    const rule = eco ? `${sol(eco.offerBase)} SOL plus ${sol(eco.offerPerGen)} per generation` : "";
+    setText("own-price", cheapest ? `${price(cheapest.salePrice)} SOL right now (${rule})` : rule || "\u2014");
+    // the deposit address on devnet takes test SOL only; real SOL sent there is lost to the world
+    const oc = document.getElementById("own-cluster");
+    if (oc) { oc.hidden = live.cluster === "mainnet-beta"; oc.textContent = `This world runs on ${live.cluster}: the SOL is test SOL, free from the Airdrop button in the cage's Account window. Do not send real SOL to a devnet address.`; }
+    // how long a fly lives here, from the record rather than a guess
+    const dead = (live.flies || []).filter(l => l.status === STATUS.DEAD && l.deathTick > l.birthTick).map(l => l.deathTick - l.birthTick).sort((a, b) => a - b);
+    const lifetime = dead.length ? `; the median fly in this world so far lived ${Math.round(dead[dead.length >> 1] / live.tickrate / 60)} minutes (${dead.length} deaths)` : "";
+    for (const id of ["own-lifetime", "faq-lifetime"]) setText(id, lifetime);
     const vd = verifierLine(live);
     setHtml("rc-verified", vd
       ? `<span class="${vd.cls === "ok" ? "chain-c" : "bad"}">${vd.word}</span> ${esc(vd.detail)}; epoch ${vd.epoch}, hash ${esc(vd.hash)}`

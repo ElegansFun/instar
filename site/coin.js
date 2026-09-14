@@ -13,6 +13,7 @@ const link = (kind, value, src, n = 8) => value ? `<a class="chain" href="${esc(
   const live = journal;
   if (!live) {
     setHtml("lv-coin", `<b class="bad">NO WORLD</b> ${esc(API ? "nothing answers at " + API : "this page must be served by the world process")}`);
+    setTimeout(main, 5000);
     return;
   }
   const coin = config.coin || {};

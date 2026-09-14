@@ -1,6 +1,6 @@
 {
   "pinned": {
-    "text": "Instar is a cage of fruit flies. Each runs the complete wiring of a real fly's nervous system: 166,700 neurons, 6.2M connections (Janelia MaleCNS). Not AI, not a recording. Every fly is an NFT on Solana; every 2,400 ticks the world hashes itself to the chain.",
+    "text": "Instar is a cage of fruit flies. Each runs every neuron of a real fly's complete nervous system: 166,700 neurons, 6.2M connections (Janelia MaleCNS). Not AI, not a recording. Every fly is an NFT on Solana; every 2,400 ticks the world hashes itself to the chain.",
     "media": "pinned.mp4"
   },
   "posts": [
@@ -41,11 +41,11 @@
       "media": "flows.png"
     },
     {
-      "text": "Earning by living. Every epoch each fly is scored on how it actually lived: survival, foraging, energy, age, maturity, births, generation. Every 8th epoch a quarter of the pool is divided by those points into the flies' vaults. A vault is its keeper's money on the way out.",
+      "text": "Earning by living. Every 8th epoch (32 minutes) the flies alive at that moment are scored on how they lived: survival, foraging, energy, age, maturity, births, generation, and a quarter of the pool is divided by those points into their vaults. A vault is its keeper's money on the way out.",
       "media": "rewards.png"
     },
     {
-      "text": "Every fly is a Metaplex Core NFT, minted at birth into the Instar collection. Whoever holds it is the keeper. The World PDA holds permanent transfer, burn and freeze delegates so births, sales and deaths settle by program. Metadata is served live. Death burns the asset.",
+      "text": "Every fly is a Metaplex Core NFT, minted at birth into the Instar collection. Whoever holds it is the keeper. The World PDA holds permanent transfer, burn and freeze delegates so births, sales and deaths settle by program. Metadata is served live. Death burns the asset; the record stays until the world is closed after escheat.",
       "media": "nft.png"
     },
     {
@@ -53,7 +53,7 @@
       "media": "breeding.png"
     },
     {
-      "text": "Flight is driven by wing motor neurons. Takeoff when the smoothed wing-power rate reaches 4 spikes per tick; steering neurons give yaw and roll; halteres a stability term; landing on contact. It costs 12× the base upkeep, which is why so many flies die exhausted mid-air.",
+      "text": "Flight is driven by wing motor neurons. Takeoff when the smoothed wing-power rate reaches 4 spikes per tick; steering neurons give yaw and roll; halteres a stability term; landing on contact. It costs a fixed 48 per airborne tick (12× base upkeep) plus twice the thrust cost, 20-28× what standing costs, which is why so many flies die exhausted mid-air.",
       "media": "flight.png"
     },
     {
@@ -61,7 +61,7 @@
       "media": "capacity.png"
     },
     {
-      "text": "Two ways in. An Instar account: a name and a PIN; the world holds a keypair for you, encrypted under the PIN. Custodial, and the site says so. Or your own wallet: the page builds each transaction from the program's IDL, your wallet signs, the world never sees your key.",
+      "text": "Two ways in. An Instar account: a name and a PIN; the world holds a keypair for you, sealed under its master key; the PIN only signs you in, and the operator can spend from it. Custodial, and the site says so. Or your own wallet: the page builds each transaction from the program's IDL, your wallet signs, the world never sees your key.",
       "media": "custody.png"
     },
     {
@@ -69,7 +69,7 @@
       "media": "own.png"
     },
     {
-      "text": "Don't take the operator's word. Every 2,400 ticks the engine hashes the whole world and the operator posts the hash to Solana. Fetch the snapshot, replay the same ticks with the same engine, compare:\n\nINSTAR_URL=https://instarcage.com npm run verify:epoch\n\nSame bytes, honest.",
+      "text": "Don't take the operator's word. Every 2,400 ticks the engine hashes the whole world and the operator posts the hash to Solana. Fetch the snapshot, replay the same ticks with the same engine, compare:\n\nnpm run verify:epoch -- --world https://instarcage.com\n\nSame bytes, honest.",
       "media": "verify.png"
     },
     {
@@ -77,7 +77,7 @@
       "media": "proof.png"
     },
     {
-      "text": "If the operator disappears: after 90 days without an operator action anyone may begin wind-down; keepers reclaim their vaults; treasuries sweep to a recovery address fixed at creation; after 180 days the rest follows and every account closes for its rent. No lamport is stranded.",
+      "text": "If the operator disappears: after 90 days without an operator action anyone may begin wind-down; keepers reclaim their vaults; treasuries sweep to a recovery address fixed at creation; 180 days after wind-down began (day 270 at the earliest), the rest follows and every account closes for its rent. No lamport is stranded.",
       "media": "recovery.png"
     },
     {

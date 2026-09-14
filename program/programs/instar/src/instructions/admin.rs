@@ -75,6 +75,7 @@ pub fn set_recovery(ctx: Context<OperatorOnly>, new_recovery: Pubkey) -> Result<
 pub fn transfer_operator(ctx: Context<OperatorOnly>, new_operator: Pubkey) -> Result<()> {
     let world = &mut ctx.accounts.world;
     require_keys_neq!(new_operator, Pubkey::default(), InstarError::WrongId);
+    require_keys_neq!(new_operator, world.recovery, InstarError::RecoveryIsOperator);
     world.pending_operator = new_operator;
     world.touch()
 }
@@ -88,6 +89,8 @@ pub struct AcceptOperator<'info> {
 
 pub fn accept_operator(ctx: Context<AcceptOperator>) -> Result<()> {
     let world = &mut ctx.accounts.world;
+    // recovery may have moved since the transfer was offered
+    require_keys_neq!(world.pending_operator, world.recovery, InstarError::RecoveryIsOperator);
     world.operator = ctx.accounts.pending_operator.key();
     world.pending_operator = Pubkey::default();
     world.touch()

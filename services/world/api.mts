@@ -35,6 +35,7 @@ export type WorldContext = {
   coin: { mint: string | null; creator: string | null };
   build: { commit: string | null; dirty: boolean; at: string | null; wasmSha256: string; censusRoot: string };
   publicUrl: string;
+  economy: { offerBase: string; offerPerGen: string; founderPremium: number; rewardEveryEpochs: number; poolPayoutBps: number; sweepIntervalMs: number; sweepPoolBps: number; gasReserve: string };
   corsOrigin: string;
   siteDir: string;
   rootDir: string;
@@ -332,7 +333,7 @@ function handler(ctx: WorldContext) {
       // say so rather than quietly showing a stale world.
       settling: !ctx.ops.outOfGas,
       journalOk: !ctx.store.persistFailed,
-      txlog: j.txlog.slice(-200), lineageNames: j.lineageNames, verifier: j.verifier, snapshotEpochs: ctx.snapshotEpochs(),
+      txlog: j.txlog.slice(-200), lineageNames: Object.fromEntries(Object.entries(j.lineageNames).map(([k, r]) => [k, { name: r.name, handle: r.handle, tick: r.tick }])), verifier: j.verifier, snapshotEpochs: ctx.snapshotEpochs(),
       stats: { pop: e.popCount, births: e.births, deaths: e.deaths, kills: e.kills, maxGen: e.maxGeneration },
       onChain: w ? { nextId: w.nextId, totalAlive: w.totalAlive, lastEpoch: w.lastEpoch, windDown: w.windDown } : null,
     };
@@ -377,6 +378,14 @@ function handler(ctx: WorldContext) {
 
   const parsePubkey = (v: unknown) => {
     try { return new PublicKey(String(v)); } catch { throw new HttpError(400, "not a Solana address"); }
+  };
+  // a payout or an NFT must go to something that can sign: a PDA, a token
+  // account or a program id would hold it forever
+  const parseWallet = (v: unknown) => {
+    const k = parsePubkey(v);
+    if (!PublicKey.isOnCurve(k.toBytes())) throw new HttpError(400, "not a wallet address (off-curve: a program account or PDA)");
+    if (k.equals(ctx.chain.worldPda) || k.equals(ctx.chain.programId)) throw new HttpError(400, "that is the world's own account");
+    return k;
   };
 
   async function post(url: string, req: http.IncomingMessage): Promise<unknown> {
@@ -571,7 +580,7 @@ function handler(ctx: WorldContext) {
         if (route === "/api/config") {
           return json(200, {
             cluster: ctx.cluster, googleClientId: ctx.googleClientId, programId: ctx.chain.programId.toBase58(),
-            publicUrl: ctx.publicUrl, coin: ctx.coin, build: ctx.build,
+            publicUrl: ctx.publicUrl, coin: ctx.coin, build: ctx.build, economy: ctx.economy,
             worldPda: ctx.chain.worldPda.toBase58(), collection: ctx.world()?.collection.toBase58() ?? null,
             explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
             // The PUBLIC endpoint, never the configured one: that may carry a
@@ -620,8 +629,8 @@ function handler(ctx: WorldContext) {
           // file is in it, so the token gate is the only thing between it
           // and the internet. Unset token: the route does not exist.
           if (!ctx.adminToken) return json(404, { error: "no such route" });
-          const q = new URL(url, "http://x").searchParams.get("token") ?? undefined;
-          if (!adminAuthorized(q ?? bearer(req))) return json(403, { error: "forbidden" });
+          // the token gates every keeper's sealed key: bearer header only, never a query string a log could keep
+          if (!adminAuthorized(bearer(req))) return json(403, { error: "forbidden" });
           const tgz = await backupArchive();
           const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
           res.setHeader("content-type", "application/gzip");
@@ -655,7 +664,7 @@ function handler(ctx: WorldContext) {
             const f = Number.isInteger(epoch) ? ctx.snapshotEpochFile(epoch) : null;
             if (!f) return json(404, { error: `no image retained for epoch ${params.get("epoch")}; retained: ${ctx.snapshotEpochs().join(", ") || "none"}` });
             file = f;
-          } else if (adminAuthorized(params.get("token") ?? bearer(req))) {
+          } else if (adminAuthorized(bearer(req))) {
             file = await ctx.snapshotFile(SNAPSHOT_REFRESH_MS);
           } else {
             file = await ctx.latestSnapshotFile();

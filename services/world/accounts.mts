@@ -81,6 +81,10 @@ export class Accounts {
   private readonly masterKey: Buffer;
   private readonly accounts: Record<string, Account>;
   private readonly sessions = new Map<string, Session>();
+  /// wrong-pin counts per username; in memory, a restart forgives
+  private readonly lockouts = new Map<string, { fails: number; until: number }>();
+  /// names whose records were quarantined: never re-minted over
+  private readonly reserved = new Set<string>();
   /// wallet address -> public handle, for the journal's lineage credits
   readonly handles: Record<string, string> = {};
   private readonly log: (l: string) => void;
@@ -130,13 +134,16 @@ export class Accounts {
   private quarantineUnreadable() {
     const stale = Object.entries(this.accounts).filter(([, a]) => !this.usable(a));
     if (!stale.length) return;
+    // every record unreadable is the master key, not the records: a world
+    // that booted anyway would mint fresh wallets over real ones
+    if (stale.length === Object.keys(this.accounts).length) throw new Error(`none of the ${stale.length} custodial account(s) decrypt under this master key; INSTAR_MASTER_KEY is wrong for this data directory`);
     const aside = this.accountsPath + ".unreadable.json";
     let prior: Record<string, Account> = {};
     try { prior = JSON.parse(fs.readFileSync(aside, "utf8")); } catch { /* first quarantine */ }
-    for (const [k, v] of stale) { prior[k] = v; delete this.accounts[k]; }
+    for (const [k, v] of stale) { prior[k] = v; delete this.accounts[k]; this.reserved.add(k); }
     fs.writeFileSync(aside, JSON.stringify(prior));
     this.save();
-    this.log(`${stale.length} account(s) could not be decrypted by this world — moved to ${path.basename(aside)}`);
+    this.log(`${stale.length} account(s) could not be decrypted by this world — moved to ${path.basename(aside)}; their names are reserved`);
   }
 
   private usable(a: Account): boolean {
@@ -193,9 +200,20 @@ export class Accounts {
     const existing = this.accounts[user];
     if (existing) {
       if (!existing.pinSalt) throw new Error("this account signs in with Google");
-      if (!timingSafeEq(hashPin(pin, existing.pinSalt), existing.pinHash)) throw new Error(NO_MATCH);
+      // wrong pins back off per account: the IP limiter alone is beaten by
+      // spreading guesses, and usernames are public on the journal
+      const lock = this.lockouts.get(user);
+      if (lock && lock.until > Date.now()) throw new Error(`too many wrong pins; try again in ${Math.ceil((lock.until - Date.now()) / 1000)} s`);
+      if (!timingSafeEq(hashPin(pin, existing.pinSalt), existing.pinHash)) {
+        const fails = (lock?.fails ?? 0) + 1;
+        const until = fails >= 5 ? Date.now() + Math.min(600_000, 30_000 * 2 ** (fails - 5)) : 0;
+        this.lockouts.set(user, { fails, until });
+        if (until) this.log(`sign-in locked for ${user}: ${fails} wrong pins`);
+        throw new Error(NO_MATCH);
+      }
+      this.lockouts.delete(user);
     } else {
-      if (!create) throw new Error(NO_MATCH);
+      if (!create || this.reserved.has(user)) throw new Error(NO_MATCH);
       const salt = crypto.randomBytes(16).toString("hex");
       this.create(user, { pinSalt: salt, pinHash: hashPin(pin, salt) });
       this.log(`account created: ${user}`);
@@ -238,17 +256,25 @@ export class Accounts {
     writeAtomic(this.sessionsPath, JSON.stringify(Object.fromEntries(this.sessions)));
   }
 
+  /// Sessions are keyed by the sha-256 of the bearer, so the file on disk
+  /// (and any backup of it) holds nothing a client could present.
+  private static key(token: string) { return crypto.createHash("sha256").update(token).digest("hex"); }
+
   private openSession(user: string): string {
     const token = crypto.randomBytes(24).toString("hex");
-    this.sessions.set(token, { user, exp: Date.now() + SESSION_TTL_MS });
+    this.sessions.set(Accounts.key(token), { user, exp: Date.now() + SESSION_TTL_MS });
     this.saveSessions();
     return token;
   }
 
   sessionUser(token: string | undefined): string | null {
-    const s = token ? this.sessions.get(token) : undefined;
+    const s = token ? this.sessions.get(Accounts.key(token)) : undefined;
     if (!s || s.exp < Date.now()) return null;
     return s.user;
+  }
+
+  closeSession(token: string | undefined) {
+    if (token && this.sessions.delete(Accounts.key(token))) this.saveSessions();
   }
 }
 

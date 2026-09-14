@@ -303,7 +303,7 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
   // so re-rendering a row or the action strip never stacks listeners.
   document.body.addEventListener("click", (ev) => {
     const sel = ev.target.closest("[data-sel]");
-    if (sel) { selectUid(+sel.dataset.sel); return; }
+    if (sel) { selectUid(+sel.dataset.sel, sel); return; }
     const buy = ev.target.closest("[data-buy]");
     if (buy) { act("buy", { id: +buy.dataset.buy, lamports: buy.dataset.price }, `bought #${buy.dataset.buy}`, buy); return; }
     const bl = ev.target.closest("[data-buylisted]");
@@ -311,9 +311,11 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
     const a = ev.target.closest("[data-act]");
     if (a) inspectorAction(a.dataset.act, +a.dataset.id, a);
   });
-  function selectUid(uid) {
-    if (!cage.flyById(uid)) { $("i-msg").className = "msg act-msg"; $("i-msg").textContent = `#${uid} is not in the cage right now`; return; }
-    cage.select(uid);
+  function selectUid(uid, btn) {
+    if (cage.flyById(uid)) { cage.select(uid); return; }
+    // answered where the click was: the inspector is closed when nothing is selected
+    const rec = flyOf(uid);
+    inlineMsg(btn, "", rec && rec.status === STATUS.DEAD ? "settled; not in the cage" : "not in the cage right now");
   }
 
   // ---------- verification ----------
@@ -341,7 +343,12 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
       const r = verifyResult;
       const chain = r.chain === true ? `<b class="ok">VERIFIED on chain</b> World.last_state_hash \u2026${esc(r.onChain)}` : r.chain === false ? `<b class="bad">DIVERGED from chain</b> chain \u2026${esc(r.onChain)}` : `chain not compared: ${esc(r.chainError)}`;
       const jr = r.journal === true ? `matches the journal` : r.journal === false ? `<b class="bad">DIFFERS from the journal</b> (posted ${esc(r.posted.hash)})` : `epoch ${r.epoch} is not in the journal`;
-      html += `<br><b>this browser</b> replayed ${fmt(r.ticks)} ticks from the snapshot at tick ${fmt(r.snapshotTick)} to epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s, holding ${(r.peakBytes / 1073741824).toFixed(2)} GB at most (engine image ${(r.imageBytes / 1048576).toFixed(0)} MB): hash ${esc(r.local)}, ${jr}; ${chain}`;
+      // a posted epoch is compared with the journal's recorded hash and the
+      // transaction that posted it; the World account keeps only the newest
+      const compared = r.journalOnly && r.posted
+        ? `${r.journal === true ? "matches" : `<b class="bad">DIFFERS from</b>`} the journal's recorded hash ${esc(r.posted.hash)} and its transaction ${txLink(r.posted.sig)}; the World account keeps only the newest epoch, so the chain was not read`
+        : `${jr}; ${chain}`;
+      html += `<br><b>this browser</b> replayed ${fmt(r.ticks)} ticks from the snapshot at tick ${fmt(r.snapshotTick)} to epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s, holding ${(r.peakBytes / 1073741824).toFixed(2)} GB at most (engine image ${(r.imageBytes / 1048576).toFixed(0)} MB): hash ${esc(r.local)}, ${compared}`;
     }
     setHtml("v-line", html);
     const nextEpoch = Math.floor((stream.t || live.tick) / live.epochInterval) + 1;
@@ -362,14 +369,17 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
       const fresh = await fetchJournal(8000);
       if (fresh) Object.assign(live, { entries: fresh.entries, epochs: fresh.epochs, tick: fresh.tick, bufferTicks: fresh.bufferTicks, snapshotEpochs: fresh.snapshotEpochs, era: fresh.era, seed: fresh.seed });
       verifyResult = await verifyEpochHere({ journal: live, config, epoch, status: (s) => { m.textContent = s; } });
-      const verdict = verifyResult.chain === true ? "VERIFIED" : verifyResult.chain === false || verifyResult.journal === false ? "MISMATCH" : "replayed";
+      const r = verifyResult;
+      const verdict = r.chain === true ? "VERIFIED" : r.chain === false || r.journal === false ? "MISMATCH" : "replayed";
       m.className = verdict === "VERIFIED" ? "msg ok" : verdict === "MISMATCH" ? "msg err" : "msg";
-      m.textContent = `${verdict}: epoch ${verifyResult.epoch} in ${(verifyResult.ms / 1000).toFixed(0)} s`;
-      pushChain(verifyResult.chain === true
-        ? `<b>epoch ${verifyResult.epoch} VERIFIED on chain by this browser</b> ${esc(verifyResult.local)}`
-        : verifyResult.chain === false || verifyResult.journal === false
-          ? `<b>epoch ${verifyResult.epoch} DIVERGED</b> local ${esc(verifyResult.local)}`
-          : `<b>epoch ${verifyResult.epoch} replayed here</b> ${esc(verifyResult.local)}, ${verifyResult.journal ? "matches the journal" : "not in the journal"}`);
+      m.textContent = r.journalOnly && r.posted
+        ? `${verdict}: epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s, ${r.journal ? "matches" : "differs from"} the journal's recorded hash and the transaction that posted it (${short(r.posted.sig, 8)}); the World account keeps only the newest epoch, so the chain was not read`
+        : `${verdict}: epoch ${r.epoch} in ${(r.ms / 1000).toFixed(0)} s`;
+      pushChain(r.chain === true
+        ? `<b>epoch ${r.epoch} VERIFIED on chain by this browser</b> ${esc(r.local)}`
+        : r.chain === false || r.journal === false
+          ? `<b>epoch ${r.epoch} DIVERGED</b> local ${esc(r.local)}`
+          : `<b>epoch ${r.epoch} replayed here</b> ${esc(r.local)}, ${r.journal ? `matches the journal${r.posted ? " " + txLink(r.posted.sig) : ""}` : "not in the journal"}`);
     } catch (e) {
       m.className = "msg err"; m.textContent = e.message;
     } finally {
@@ -602,6 +612,7 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
   async function auth(create) {
     const user = $("acct-user").value.trim(), pin = $("acct-pin").value;
     if (!user || !pin) { msg("acct-msg", "name and pin are both needed", "err"); return; }
+    if (pin.length < 6 || pin.length > 64) { msg("acct-msg", "pin: 6-64 characters", "err"); return; }
     if (!SAME_ORIGIN_API) { msg("acct-msg", "sign in on the world's own address; this page will not send a PIN elsewhere", "err"); return; }
     msg("acct-msg", create ? "creating\u2026" : "signing in\u2026");
     try {

@@ -84,6 +84,9 @@ pub fn reclaim_vault(ctx: Context<ReclaimVault>, _id: u64) -> Result<()> {
     world.total_credit = add(world.total_credit, amount)?;
 
     let credit = &mut ctx.accounts.credit;
+    if credit.owner == Pubkey::default() {
+        world.credits_open = add(world.credits_open, 1)?;
+    }
     credit.owner = ctx.accounts.owner.key();
     credit.bump = ctx.bumps.credit;
     credit.amount = add(credit.amount, amount)?;

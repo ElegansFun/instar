@@ -47,21 +47,22 @@ async function loadCensusHeader() {
     $("st-verify").innerHTML = `<b class="bad">NO WORLD</b> ${esc(API ? "nothing answers at " + API : "this page must be served by the world process")}`;
     setText("st-cluster", "none");
     setText("ab-mode", "found no world to draw; nothing here is live");
+    setTimeout(main, 5000);
     return;
   }
-  if (!config.arena) throw new Error("the world did not publish its arena");
+  if (!config.arena) { setText("ab-mode", "the world did not publish its arena; the figure is not drawn"); }
   fillConstants(config, live);
   loadCensusHeader();
   $("ab-chain").innerHTML = `${esc(live.cluster)} &middot; program ${link("address", live.programId, live)}`;
 
   // ---- the cage ----
-  const cage = new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: true, onSelect: (id) => { describe(id); brain.watch(id, (info) => { rasterInfo = info; }); } });
+  const cage = !config.arena ? null : new Cage3D($("cage"), { arena: config.arena, maxPop: config.maxPop || 64, embedded: true, onSelect: (id) => { describe(id); brain.watch(id, (info) => { rasterInfo = info; }); } });
   const stream = new Stream({ onEvent: (ev) => { if (ev.name === "death" && ev.cause) deaths.set(ev.cause, (deaths.get(ev.cause) || 0) + 1); } });
   let flies = [];
   const note = $("cage-note");
   function describe(id) {
     if (id < 0) { note.textContent = "drag to orbit \u00b7 click a fly to read it"; return; }
-    const f = cage.flyById(id);
+    const f = cage && cage.flyById(id);
     if (!f) return;
     const rec = (live.flies || []).find(l => l.id === id);
     note.textContent = `#${id} \u00b7 ${f.mode ? `flying at layer ${f.z.toFixed(1)}` : `walking on ${SURFACE_NAME[f.s] || "the cage"}`} \u00b7 energy ${fmt(f.e)}` +
@@ -75,9 +76,9 @@ async function loadCensusHeader() {
   setText("b-stride", brain.stride);
   $("role-legend").querySelector("tbody").innerHTML = roleRows(config).map(([r, label, n]) => `<tr><td>${r}</td><td>${esc(label)}</td><td class="n">${fmt(n)}</td></tr>`).join("");
   function renderBrain() {
-    const id = cage.selected >= 0 ? cage.selected : (flies[0] ? flies[0].id : -1);
+    const id = cage && cage.selected >= 0 ? cage.selected : (flies[0] ? flies[0].id : -1);
     if (id >= 0 && id !== watched) { watched = id; brain.watch(id, (info) => { rasterInfo = info; }); }
-    const f = id >= 0 ? cage.flyById(id) : null;
+    const f = id >= 0 && cage ? cage.flyById(id) : null;
     brain.bars(f ? f.fired : null);
     setText("brain-cap", f
       ? `Fly #${id}, ${f.mode ? "flying" : "walking"}, at the world's tick ${fmt(stream.t)}. Bars: neurons that fired, by role group, over the group's size, log scale. Raster: every ${brain.stride}th neuron in canonical order, ${fmt(brain.sampled)} of ${fmt(brain.nodes)}, one ${brain.dot}\u00d7${brain.dot} dot each, drawn when it fired${rasterInfo ? `; ${fmt(rasterInfo.lit)} of them did` : ""}. The raster is read from the world four times a second, so it lags the cage by up to a quarter second.`
@@ -92,7 +93,7 @@ async function loadCensusHeader() {
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
     flies = stream.sample(now);
-    cage.render(flies, stream.next ? stream.light : 255, dt);
+    if (cage) cage.render(flies, stream.next ? stream.light : 255, dt);
     frame++;
     setText("st-tick", fmt(stream.t || live.tick));
     setText("st-pop", flies.length);
@@ -112,7 +113,7 @@ async function loadCensusHeader() {
       if (v.innerHTML !== html) v.innerHTML = html;
     }
     if (frame % 30 === 1) {
-      if (cage.selected >= 0) describe(cage.selected);
+      if (cage && cage.selected >= 0) describe(cage.selected);
       updateCageNow();
       renderBrain();
     }
@@ -178,7 +179,7 @@ async function loadCensusHeader() {
     renderJournal();
   }, 4000);
   // headless verification: drive one frame without rAF
-  window.__instar = { cage, stream, brain, config, journal: live, frame: () => { flies = stream.sample(performance.now()); cage.render(flies, stream.light, 1 / 60); } };
+  window.__instar = { cage, stream, brain, config, journal: live, frame: () => { flies = stream.sample(performance.now()); if (cage) cage.render(flies, stream.light, 1 / 60); } };
 })().catch(e => {
   const v = document.getElementById("st-verify");
   if (v) v.innerHTML = `<b class="bad">FAILED</b> ${esc(e.message)}`;

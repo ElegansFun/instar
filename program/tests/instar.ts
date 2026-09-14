@@ -284,9 +284,12 @@ describe("instar", () => {
   let child: BN; // bob's child, alice keeps it
   let aliceKept: BN; // alice's larva that survives to the recovery drills
   let charlieKept: BN; // charlie's larva that nobody ever comes back for
+  let strangerKept: BN; // bought by someone who has never held a credit; reclaimed in wind-down
+  let danaKept: BN; // dies during wind-down
+  const dana = Keypair.generate();
 
   before(async () => {
-    await Promise.all([alice, bob, charlie, stranger].map((k) => airdrop(k.publicKey, 20)));
+    await Promise.all([alice, bob, charlie, stranger, dana].map((k) => airdrop(k.publicKey, 20)));
   });
 
   const programDataPda = PublicKey.findProgramAddressSync(
@@ -518,10 +521,10 @@ describe("instar", () => {
   });
 
   it("death pays the heirs 40 percent in equal shares, dust to the pool, and burns the asset", async () => {
-    const heirs = [await newborn(SOL(0.2)), await newborn(SOL(0.2)), await newborn(SOL(0.2))];
-    for (const h of heirs) await buy(h, SOL(0.2), bob);
+    const heirs = [await newborn(SOL(0.2), first, 1), await newborn(SOL(0.2), first, 1), await newborn(SOL(0.2), first, 1)];
+    for (const h of heirs) await buy(h, SOL(0.2), bob, first);
     const estate = (await creature(first)).vault;
-    expect(estate.toString()).to.equal(SOL(0.61).toString());
+    expect(estate.toString(), "0.6 from the sale plus a 10 percent royalty on the child bought earlier and on each of the three heirs").to.equal(SOL(0.67).toString());
     const h0 = await Promise.all(heirs.map(creature));
     const w0 = await world();
     const bobCredit0 = await credit(bob.publicKey);
@@ -531,6 +534,10 @@ describe("instar", () => {
 
     // the credit account is the wrong keeper's: bob owns the asset now, not alice
     await expectError(settleDeath(first, CAUSE_STARVED, heirs, alice.publicKey), "ConstraintSeeds");
+    // only the fly's own living offspring inherit, each of them once
+    await expectError(settleDeath(first, CAUSE_STARVED, [aliceKept], bob.publicKey), "WrongId");
+    await expectError(settleDeath(first, CAUSE_STARVED, [heirs[0], heirs[0]], bob.publicKey), "WrongId");
+    await expectError(settleDeath(first, CAUSE_STARVED, [heirs[1], heirs[0]], bob.publicKey), "WrongId");
     await settleDeath(first, CAUSE_STARVED, heirs, bob.publicKey);
 
     const toHeirs = bps(estate, 4000);
@@ -615,6 +622,18 @@ describe("instar", () => {
     const credit0 = await credit(alice.publicKey);
     await settleDeath(id, CAUSE_CULLED, [], alice.publicKey);
     expect((await credit(alice.publicKey)).sub(credit0).toString()).to.equal(SOL(0.06).toString());
+  });
+
+  it("a cull request pays the keeper 85 percent whatever cause the engine records", async () => {
+    const id = await newborn(SOL(1));
+    await buy(id, SOL(1), alice);
+    await requestCull(id, alice);
+    const vault = (await creature(id)).vault;
+    const credit0 = await credit(alice.publicKey);
+    // the fly starved before the crank got to the cull; the keeper asked, the keeper is paid
+    await settleDeath(id, CAUSE_STARVED, [], alice.publicKey);
+    expect((await credit(alice.publicKey)).sub(credit0).toString()).to.equal(bps(vault, 8500).toString());
+    await assertSolvent("cull by another cause");
   });
 
   it("a plain Core transfer hands the larva over; the old listing is void and the new owner clears it", async () => {
@@ -843,6 +862,8 @@ describe("instar", () => {
   });
 
   it("operator hand-over is a two-step accept", async () => {
+    // the recovery address can never become the operator, by hand-over either
+    await expectError(program.methods.transferOperator(recovery.publicKey).accountsPartial({ world: worldPda, operator }).rpc(), "RecoveryIsOperator");
     await program.methods.transferOperator(bob.publicKey).accountsPartial({ world: worldPda, operator }).rpc();
     expect((await world()).operator.equals(operator), "nothing changes until accepted").to.be.true;
     await expectError(
@@ -933,6 +954,10 @@ describe("instar", () => {
     // never be seen again
     charlieKept = await newborn(SOL(0.5));
     await buy(charlieKept, SOL(0.5), charlie);
+    strangerKept = await newborn(SOL(0.4));
+    await buy(strangerKept, SOL(0.4), stranger);
+    danaKept = await newborn(SOL(0.4));
+    await buy(danaKept, SOL(0.4), dana);
     await sleep(ABANDONED_AFTER_S - 1);
     await program.methods.heartbeat().accountsPartial({ world: worldPda, operator }).rpc();
     await sleep(2);
@@ -992,6 +1017,26 @@ describe("instar", () => {
     expect(c.status).to.equal(STATUS_DEAD);
     expect(await assetBurned(aliceKept), "reclaiming burns the asset").to.be.true;
     await assertSolvent("reclaim");
+  });
+
+  it("in wind-down a death is the keeper's whole vault, and a keeper's first credit is counted", async () => {
+    // a crank still running in wind-down must not split a vault the keeper could have reclaimed whole
+    const vault = (await creature(danaKept)).vault;
+    const w0 = await world();
+    expect(await conn.getAccountInfo(creditPda(dana.publicKey)), "dana has never held a credit").to.be.null;
+    await settleDeath(danaKept, CAUSE_STARVED, [], dana.publicKey);
+    expect((await credit(dana.publicKey)).toString(), "the whole vault").to.equal(vault.toString());
+    const w = await world();
+    expect(w.metabolism.toString(), "nothing to the treasuries").to.equal(w0.metabolism.toString());
+    expect(w.pool.toString()).to.equal(w0.pool.toString());
+    await assertSolvent("wind-down death");
+    // reclaim_vault by a keeper with no credit yet creates one, and it is counted
+    expect(await conn.getAccountInfo(creditPda(stranger.publicKey)), "the stranger has never held a credit").to.be.null;
+    await reclaimVault(strangerKept, stranger);
+    await assertSolvent("first credit by reclaim");
+    // both come back for their money; the escheat drill below counts only what nobody claimed
+    await withdraw(dana);
+    await withdraw(stranger);
   });
 
   it("treasuries reach recovery without the operator, and only recovery", async () => {

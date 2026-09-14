@@ -11,7 +11,7 @@ export type Entry = { name: string; data: Buffer; mtime: number };
 /// world only resumes from a snapshot no newer than the journal, so that
 /// order is the one that always restores by resuming rather than replaying.
 /// The snapshot is the world's gzip image (~0.6 GB of engine memory raw).
-export const BACKUP_FILES = ["snapshot.bin.gz", "journal.json", "journal.json.bak", "accounts.json", "accounts.json.bak", "sessions.json", "genesis.lock", "accounts.json.unreadable.json"];
+export const BACKUP_FILES = ["snapshot.bin.gz", "journal.json", "journal.json.bak", "accounts.json", "accounts.json.bak", "genesis.lock", "accounts.json.unreadable.json"];
 const BLOCK = 512;
 
 function octal(n: number, width: number): Buffer {

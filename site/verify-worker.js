@@ -112,7 +112,11 @@ export async function streamSnapshot(url, onMeta) {
   const flush = () => {
     if (!pendingLen) return;
     const need = offset + pendingLen, have = mem.buffer.byteLength;
-    if (need > have) { mem.grow(Math.ceil((need - have) / PAGE)); hold(mem.buffer.byteLength - have); }
+    if (need > have) {
+      try { mem.grow(Math.ceil((need - have) / PAGE)); }
+      catch { throw new Error(`the engine could not grow to ${fmtN(need)} bytes; not enough memory`); }
+      hold(mem.buffer.byteLength - have);
+    }
     const u8 = new Uint8Array(mem.buffer);
     for (const c of pending) { u8.set(c, offset); offset += c.length; }
     hold(-pendingLen);

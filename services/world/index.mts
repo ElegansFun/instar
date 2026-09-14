@@ -642,7 +642,7 @@ async function buildWorld() {
   }
 
   /// A fly's worth grows from living a full life, not from being traded.
-  /// Scored every epoch; settled every REWARD_EVERY_EPOCHS.
+  /// Scored and settled every REWARD_EVERY_EPOCHS epochs: the flies alive at that boundary.
   function creditLifePerformance(epoch: number) {
     if (epoch <= journal.lastCreditEpoch || epoch % REWARD_EVERY_EPOCHS !== 0) return;
     journal.lastCreditEpoch = epoch;
@@ -845,6 +845,8 @@ async function buildWorld() {
 
   return {
     cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin, build,
+    // the rules the site quotes, so no rate is typed into a page
+    economy: { offerBase: OFFER_BASE.toString(), offerPerGen: OFFER_PER_GEN.toString(), founderPremium: Number(FOUNDER_PREMIUM), rewardEveryEpochs: REWARD_EVERY_EPOCHS, poolPayoutBps: Number(POOL_PAYOUT_BPS), sweepIntervalMs: SWEEP_INTERVAL_MS, sweepPoolBps: SWEEP_POOL_BPS, gasReserve: GAS_RESERVE.toString() },
     corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT, dataDir: DATA_DIR, adminToken: ADMIN_TOKEN,
     chain, store, engine, accounts, ops, log, bufferTicks: BUFFER_TICKS,
     tick: () => tick, capacity: () => capacity, lastEpoch: () => lastEpoch,
