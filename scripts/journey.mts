@@ -108,13 +108,34 @@ let me = (await post("/api/me", {}, a1.token)).json;
 assert.ok(BigInt(me.balance) >= BigInt(LAMPORTS_PER_SOL) / 6n, `balance ${me.balance}`);
 ok(`airdrop -> balance ${me.balance} lamports`);
 
-// ---- buy the first fly on offer --------------------------------------------
+// ---- buy the best-fed fly on offer --------------------------------------------
+// The journey takes a minute or two at devnet pace and the world does not
+// pause for it: a founder near starvation can die mid-run. One stream frame
+// gives every living fly's energy; the offered fly with the most is bought.
+async function energies(): Promise<Map<number, number>> {
+  const ac = new AbortController();
+  const res = await fetch(`${BASE}/api/stream`, { signal: ac.signal });
+  const reader = res.body!.getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += Buffer.from(value).toString();
+    const m = buf.match(/^data: (.*)$/m);
+    if (m) { ac.abort(); return new Map(JSON.parse(m[1]).flies.map((f: any) => [f.id, f.e])); }
+  }
+  return new Map();
+}
 const deadline = Date.now() + OFFER_WAIT_MS;
 let offered: any = null;
 while (!offered && Date.now() < deadline) {
   const j = (await get("/api/journal")).json;
-  offered = j.flies.find((l: any) => l.status === 1) ?? null;
-  if (!offered) await new Promise(r => setTimeout(r, 3000));
+  const onOffer = j.flies.filter((l: any) => l.status === 1);
+  if (onOffer.length) {
+    const e = await energies();
+    offered = onOffer.reduce((best: any, l: any) => (e.get(l.id) ?? 0) > (e.get(best.id) ?? 0) ? l : best);
+    console.log(`      fly ${offered.id} on offer with energy ${e.get(offered.id) ?? "?"} (${onOffer.length} offered)`);
+  } else await new Promise(r => setTimeout(r, 3000));
 }
 assert.ok(offered, `no fly came up for sale within ${OFFER_WAIT_MS / 1000}s (pendingOps ${(await get("/api/journal")).json.pendingOps})`);
 const id = offered.id;

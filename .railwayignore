@@ -9,6 +9,5 @@ program/node_modules
 program/test-ledger
 test-ledger
 data/raw
-data/world
-legacy
+data/world*
 *.log
