@@ -103,7 +103,7 @@ const log = (line: string) => console.log(`[instar] ${line}`);
 
 type Ctx = Awaited<ReturnType<typeof buildWorld>>;
 /// bound before the world is built; /api/health reports the replay from it
-const boot: Boot = { ctx: null, tick: 0, target: 0 };
+const boot: Boot = { ctx: null, tick: 0, target: 0, site: { siteDir: SITE_DIR, rootDir: ROOT, publicUrl: PUBLIC_URL } };
 
 /// Hosts like Railway hand secrets over as environment variables, not files.
 /// A keypair given as INSTAR_<NAME>_KEYPAIR_JSON (the 64-number array) is

@@ -80,14 +80,40 @@ export type WorldContext = {
 /// What the server knows before the world is built. The port is bound
 /// first so a supervisor sees `replaying` (503) instead of a refused
 /// connection while the journal replays; `ctx` is set once the world is live.
-export type Boot = { ctx: WorldContext | null; tick: number; target: number };
+export type Boot = { ctx: WorldContext | null; tick: number; target: number; site: Site };
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
   ".json": "application/json", ".wasm": "application/wasm", ".png": "image/png", ".jpg": "image/jpeg",
   ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".cbg": "application/octet-stream",
+  ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".cbg": "application/octet-stream",
 };
+
+/// Where the site's files are, and the origin the pages must name in their
+/// link-preview tags; known before the world is built
+export type Site = { siteDir: string; rootDir: string; publicUrl: string };
+
+function serveStatic(site: Site, url: string, res: http.ServerResponse): boolean {
+  let rel: string;
+  try { rel = decodeURIComponent(url.split("?")[0]); } catch { return false; }
+  if (rel === "/") rel = "/index.html";
+  if (rel.includes("\0")) return false;
+  const isData = rel.startsWith("/data/canonical/");
+  const base = isData ? path.join(site.rootDir, "data", "canonical") : site.siteDir;
+  const full = path.resolve(base, "." + (isData ? rel.slice("/data/canonical".length) : rel));
+  if (full !== base && !full.startsWith(base + path.sep)) return false;
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
+  const ext = path.extname(full).toLowerCase();
+  res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
+  res.setHeader("cache-control", isData ? "public, max-age=3600" : "no-cache");
+  res.setHeader("x-frame-options", "DENY");
+  // link previews need absolute URLs and the origin is only known here
+  const body = ext === ".html" ? Buffer.from(fs.readFileSync(full, "utf8").replaceAll("{{PUBLIC_URL}}", site.publicUrl)) : fs.readFileSync(full);
+  res.setHeader("content-length", String(body.length));
+  res.writeHead(200);
+  res.end(body);
+  return true;
+}
 const BODY_LIMIT = 64 * 1024;
 const AUTH_RATE = { max: 5, windowMs: 60_000 };
 /// Behind a reverse proxy the socket address is the proxy's; set
@@ -129,12 +155,25 @@ function flyJson(c: CreatureView) {
 
 export function createServer(boot: Boot): http.Server {
   let live: ReturnType<typeof handler> | null = null;
+  const canonicalHost = (() => { try { return new URL(boot.site.publicUrl).host; } catch { return ""; } })();
   return http.createServer((req, res) => {
+    // one origin: the OAuth client, the link previews and the pages' own
+    // canonical tags all name PUBLIC_URL, so www. and other aliases redirect
+    const host = req.headers.host ?? "";
+    if (canonicalHost && host !== canonicalHost && host.endsWith("." + canonicalHost)) {
+      res.writeHead(301, { location: boot.site.publicUrl + (req.url ?? "/"), "cache-control": "public, max-age=3600" });
+      res.end();
+      return;
+    }
     if (boot.ctx) {
       live ??= handler(boot.ctx);
       return live(req, res);
     }
+    // The pages are served while the world replays so a visitor gets the
+    // site with its own "replaying" state rather than a JSON error; only
+    // the API answers 503 until the world is live.
     const route = (req.url ?? "/").split("?")[0];
+    if ((req.method === "GET" || req.method === "HEAD") && !route.startsWith("/api/") && serveStatic(boot.site, req.url ?? "/", res)) return;
     res.setHeader("content-type", "application/json");
     res.setHeader("cache-control", "no-cache");
     res.writeHead(503);
@@ -506,28 +545,6 @@ function handler(ctx: WorldContext) {
     } as Record<string, string>)[name] ?? name;
   }
 
-  function serveStatic(url: string, res: http.ServerResponse): boolean {
-    let rel: string;
-    try { rel = decodeURIComponent(url.split("?")[0]); } catch { return false; }
-    if (rel === "/") rel = "/index.html";
-    if (rel.includes("\0")) return false;
-    const isData = rel.startsWith("/data/canonical/");
-    const base = isData ? path.join(ctx.rootDir, "data", "canonical") : ctx.siteDir;
-    const full = path.resolve(base, "." + (isData ? rel.slice("/data/canonical".length) : rel));
-    if (full !== base && !full.startsWith(base + path.sep)) return false;
-    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
-    const ext = path.extname(full).toLowerCase();
-    res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
-    res.setHeader("cache-control", isData ? "public, max-age=3600" : "no-cache");
-    res.setHeader("x-frame-options", "DENY");
-    // link previews need absolute URLs and the origin is only known here
-    const body = ext === ".html" ? Buffer.from(fs.readFileSync(full, "utf8").replaceAll("{{PUBLIC_URL}}", ctx.publicUrl)) : fs.readFileSync(full);
-    res.setHeader("content-length", String(body.length));
-    res.writeHead(200);
-    res.end(body);
-    return true;
-  }
-
   return async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     const origin = req.headers.origin;
@@ -706,7 +723,7 @@ function handler(ctx: WorldContext) {
           });
         }
         if (route.startsWith("/api/")) return json(404, { error: "no such route" });
-        if (serveStatic(url, res)) return;
+        if (serveStatic(ctx, url, res)) return;
         return json(404, { error: "not found" });
       }
       if (req.method === "POST") {

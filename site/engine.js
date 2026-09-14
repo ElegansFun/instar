@@ -36,14 +36,34 @@ export async function fetchConfig() {
     return r.ok ? await r.json() : {};
   } catch { return {}; }
 }
+// What the world says about itself while it is not yet answering: after a
+// restart it replays its record for a minute or two and /api/health says so.
+async function replaying() {
+  if (!API) return null;
+  try {
+    const r = await fetch(API + "/api/health", { signal: AbortSignal.timeout(4000) });
+    const h = await r.json();
+    return h && h.phase === "replaying" ? h : null;
+  } catch { return null; }
+}
 // Boot asks three times with a patient timeout before calling the world
 // absent: a first byte delayed by a snapshot being gzipped is not an outage.
+// A world that is replaying is waited for, with its progress on the page,
+// for up to ten minutes.
 export async function boot({ status = () => {} } = {}) {
   status("reading the world's journal");
   let journal = null;
   for (let i = 0; i < 3 && !journal; i++) {
     journal = await fetchJournal(6000);
     if (!journal && API) await new Promise(r => setTimeout(r, 500));
+  }
+  const until = Date.now() + 10 * 60_000;
+  while (!journal && Date.now() < until) {
+    const h = await replaying();
+    if (!h) break;
+    status(`the world is replaying its record: tick ${h.tick.toLocaleString("en-US")} of ${h.target.toLocaleString("en-US")}`);
+    await new Promise(r => setTimeout(r, 2000));
+    journal = await fetchJournal(6000);
   }
   const config = journal ? await fetchConfig() : {};
   return { journal, config };
