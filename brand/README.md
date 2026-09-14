@@ -43,21 +43,40 @@ their numbers from the world rather than from prose.
 | `social/*.png` | one screenshot per `[data-asset]` card; `live-*.png` are screenshots of the site itself |
 | `social/posts.json` | the pinned post and the thread, each with its media file |
 | `social/article.md` | the long form; `[image: x.png]` marks where each card goes |
-| `social/narration.json`, `narration.ps1` | six narration lines; the script speaks them with Windows SAPI into `nar-N.wav` (not committed) |
-| `social/captions.html` | six 1600×150 lower-third captions, screenshot to `cap-N.png` |
-| `social/tour.webm` | screen recording of the site (not committed) |
-| `social/pinned.mp4` | 1280×720, 30 fps, 72 s, h264 + aac: the tour cut into six segments, one caption and one narration each, closing on the hero card |
+| `social/narration.json` | the six narration lines, one per segment |
+| `../video.mjs` | `narrate`: speaks them with a neural voice (edge-tts) into `nar-N.wav`; `plan`: writes `tour.json`, each segment's length from its narration; `assemble`: cuts `pinned.mp4` |
+| `../tour.js` | the camera tour, evaluated inside cage.html on the live world; renders one frame per call on a virtual clock (see below) |
+| `social/captions.html` | five 1920×180 lower-third captions, screenshot to `cap-N.png` |
+| `social/frames/seg-N/*.png` | one screenshot per frame (not committed) |
+| `social/pinned.mp4` | 1920×1080, 30 fps, h264 + aac: five cage segments over their captions, one narration each, closing on the hero card |
 
 ```
 curl -s https://instarcage.com/api/config  > brand/social/.config.json
 curl -s https://instarcage.com/api/journal > brand/social/.journal.json
 node brand/social.mjs
-powershell -File brand/social/narration.ps1
+node brand/video.mjs narrate      # python -m pip install edge-tts; INSTAR_VOICE picks the voice
+node brand/video.mjs plan
 ```
 
 Then screenshot `compose.html` and `captions.html` the same way as above.
 The cards say what the world says at the moment they are made: regenerate
 them, not the numbers, when the world moves.
+
+The video is not a screen recording. Open `cage.html` at 1920×900 (device
+scale 1.25 gives 2400×1125 frames, scaled down at assembly), wait for the
+stream, evaluate `brand/tour.js` in the page, then `__tour.init(tour.json)`
+once and, for each segment `i`, `__tour.seg(i)` followed by `tour.json`'s
+`frames` calls of `await __tour.step()`, screenshotting the page after each
+into `social/frames/seg-i/00000.png` onward. The tour replaces the page's
+clock with one that moves a thirtieth of a second per step and lets the
+world's frames in one per hundred virtual milliseconds, so the cut is smooth
+whatever a frame costs to draw and encode, and the flies move at the
+world's real speed. Shoot in the world's daytime (`light` in the HUD above
+128). Then:
+
+```
+node brand/video.mjs assemble
+```
 
 ## Palette
 

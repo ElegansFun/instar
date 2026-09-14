@@ -22,7 +22,7 @@ program/target/deploy/*-keypair.json
 
 backups/
 site/build.json
-brand/social/tour.webm
+brand/social/frames/
 brand/social/nar-*.wav
 brand/social/.config.json
 brand/social/.journal.json
