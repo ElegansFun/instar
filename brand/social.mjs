@@ -86,6 +86,9 @@ const cards = [
   card("licence", `${head("Whose work this stands on", "Berg et al. 2026, Janelia FlyEM.")}<p><i>Sexual dimorphism in the complete connectome of the Drosophila male central nervous system.</i> Cell; preprint doi:10.1101/2025.10.09.680999. Data: MaleCNS v1.0, CC BY 4.0.</p><p>The census used here is a byte-verifiable conversion of the published connection weights and body annotations; its Merkle root is ${b.censusRoot ? b.censusRoot.slice(0, 20) + "…" : "—"}.</p><p class="note">The connectome belongs to its authors. Nothing here is their endorsement of anything here.</p>`),
 
   card("coin", `${head("The coin", "$INSTAR feeds the cage. That is all it does.")}<div class="cols two"><div><p>A pump.fun coin whose creator fees are claimed by the world and paid into the cage: half to metabolism (capacity), half to the pool (rewards). No governance, no access, no share of anything.</p></div><div>${table([["creator", cfg.coin && cfg.coin.creator ? cfg.coin.creator : "—"], ["status", cfg.coin && cfg.coin.mint ? "launched" : "not launched yet"], ["claims", "permissionless; every one a public transaction"]])}</div></div>`),
+
+  // the X article's cover, 5:2 as X asks
+  card("cover", `<div class="split"><div>${head("A persistent world, settled on Solana", "A cage of flies,<br>each driven by a complete<br><i>wiring diagram.</i>")}<p class="lede">166,700 neurons. 6.2 million connections. Every fly an NFT. Every epoch hashed to Solana.</p></div><div class="art">${plate()}</div></div>`, "cover"),
 ];
 
 const css = `
@@ -134,6 +137,10 @@ td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .timeline b{display:block;font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:16px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
 .cmd{font-family:"IBM Plex Mono",monospace;font-size:22px;background:#E9E2C9;padding:14px 18px;margin-top:18px;display:inline-block}
 .foot{position:absolute;left:84px;right:84px;bottom:36px;display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#4A4640;border-top:1px solid rgba(20,19,17,.55);padding-top:12px}
+.card.cover{width:2000px;height:800px;padding:60px 96px}
+.card.cover .split{height:620px;grid-template-columns:1fr 560px}
+.card.cover .art{width:560px;height:560px}
+.card.cover .foot{left:96px;right:96px}
 `;
 fs.writeFileSync(path.join(out, "compose.html"), `<!doctype html><meta charset="utf-8"><title>Instar cards</title><style>${css}</style>\n${cards.join("\n")}\n`);
 console.log(`wrote ${cards.length} cards to brand/social/compose.html`);

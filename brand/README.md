@@ -43,6 +43,7 @@ their numbers from the world rather than from prose.
 | `social/*.png` | one screenshot per `[data-asset]` card; `live-*.png` are screenshots of the site itself |
 | `social/posts.json` | the pinned post and the thread, each with its media file |
 | `social/article.md` | the long form; `[image: x.png]` marks where each card goes |
+| `../article.mjs` | turns `article.md` plus the world's numbers into `social/article.json`: the blocks (HTML paragraphs, media, markdown tables, a code block) that X's article editor takes, played in one block at a time; `cover.png` is its 5:2 cover |
 | `social/narration.json` | the six narration lines, one per segment |
 | `../video.mjs` | `narrate`: speaks them with a neural voice (edge-tts) into `nar-N.wav`; `plan`: writes `tour.json`, each segment's length from its narration; `assemble`: cuts `pinned.mp4` |
 | `../tour.js` | the camera tour, evaluated inside cage.html on the live world; renders one frame per call on a virtual clock (see below) |
