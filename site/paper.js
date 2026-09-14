@@ -1,4 +1,4 @@
-// index.html: the monograph. Draws the live cage from the world's stream,
+// paper.html: the monograph. Draws the live cage from the world's stream,
 // embeds the brain panel, and fills every number from the census header,
 // the world's config, or its journal.
 import { boot, fetchJournal, verifierLine, fillConstants, CENSUS_HEADER_URL, API } from "./engine.js";

@@ -197,7 +197,7 @@ into the World account and books `pool_bps` of them to the pool and the rest
 to metabolism. The sweep uses 5000: half to each.
 
 - **Metabolism** is carrying capacity: the cage holds
-  `8 + 20 × (metabolism in SOL)` flies, up to 48. It is never spent by the
+  `8 + 20 × (metabolism in SOL)` flies, up to 40, the engine's slot count. It is never spent by the
   engine.
 - **The pool** pays every living fly each eighth epoch: 25% of it, divided
   by how each fly actually lived, credited to their vaults. A fly's

@@ -736,10 +736,14 @@ async function buildWorld() {
   // the fee keypair first; the sweep then moves everything above rent and
   // the gas reserve into the world. A failed claim leaves the sweep to run
   // on whatever is already there and is retried next interval.
+  /// published on /api/config so the site can name the coin and where its
+  /// creator fees go without a redeploy when the coin launches
+  const coin: { mint: string | null; creator: string | null } = { mint: process.env.INSTAR_COIN_MINT ?? null, creator: null };
   if (feeFile) {
     const fee = loadKeypair(feeFile);
-    const claimer = process.env.INSTAR_COIN_MINT
-      ? new FeeClaimer({ chain, mint: new PublicKey(process.env.INSTAR_COIN_MINT), fee, log })
+    coin.creator = fee.publicKey.toBase58();
+    const claimer = coin.mint
+      ? new FeeClaimer({ chain, mint: new PublicKey(coin.mint), fee, log })
       : null;
     log(`fee keypair ${fee.publicKey.toBase58()} — ${claimer ? `claiming $INSTAR (${claimer.mint.toBase58()}) creator fees and ` : ""}sweeping every ${SWEEP_INTERVAL_MS / 60000} min`);
     let sweeping: number | null = null;
@@ -820,7 +824,7 @@ async function buildWorld() {
   await refreshChain().catch(e => log("initial chain read: " + String(e?.message ?? e).slice(0, 120)));
 
   return {
-    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL,
+    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin,
     corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT, dataDir: DATA_DIR, adminToken: ADMIN_TOKEN,
     chain, store, engine, accounts, ops, log, bufferTicks: BUFFER_TICKS,
     tick: () => tick, capacity: () => capacity, lastEpoch: () => lastEpoch,

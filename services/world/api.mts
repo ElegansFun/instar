@@ -32,6 +32,7 @@ export type Frame = { t: number; light: number; temp: number; flies: StreamFly[]
 export type WorldContext = {
   cluster: Cluster;
   googleClientId: string;
+  coin: { mint: string | null; creator: string | null };
   publicUrl: string;
   corsOrigin: string;
   siteDir: string;
@@ -546,7 +547,7 @@ function handler(ctx: WorldContext) {
         if (route === "/api/config") {
           return json(200, {
             cluster: ctx.cluster, googleClientId: ctx.googleClientId, programId: ctx.chain.programId.toBase58(),
-            publicUrl: ctx.publicUrl,
+            publicUrl: ctx.publicUrl, coin: ctx.coin,
             worldPda: ctx.chain.worldPda.toBase58(), collection: ctx.world()?.collection.toBase58() ?? null,
             explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
             // The PUBLIC endpoint, never the configured one: that may carry a

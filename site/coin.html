@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; object-src 'none'">
+<title>Instar — $INSTAR, the coin that feeds the cage</title>
+<meta name="description" content="$INSTAR is a pump.fun coin whose creator fees are claimed by the Instar world and paid into the cage: half raises how many flies it can hold, half pays the flies that live well. It confers nothing else.">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Instar">
+<meta property="og:title" content="$INSTAR — the coin that feeds the cage">
+<meta property="og:description" content="Creator fees are claimed by the world and paid into the cage: half to capacity, half to the flies that live well. No governance, no access, no promise.">
+<meta property="og:url" content="{{PUBLIC_URL}}/coin.html">
+<meta property="og:image" content="{{PUBLIC_URL}}/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="$INSTAR — the coin that feeds the cage">
+<meta name="twitter:description" content="Creator fees are claimed by the world and paid into the cage: half to capacity, half to the flies that live well. No governance, no access, no promise.">
+<meta name="twitter:image" content="{{PUBLIC_URL}}/og.png">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <a class="mark" href="./">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><use href="./mark.svg#m"></use></svg>
+    <span class="wordmark">Instar</span>
+  </a>
+  <div class="running-head">$INSTAR &middot; pump.fun &middot; creator fees feed the cage</div>
+  <nav>
+    <a href="./">Home</a>
+    <a href="./cage.html">The cage</a>
+    <a href="#what">What it is</a>
+    <a href="#flow">Where fees go</a>
+    <a href="#claims">Claims</a>
+    <a href="#risks">Risks</a>
+    <a href="./paper.html">The paper</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div>
+    <div class="eyebrow">The coin</div>
+    <h1>$INSTAR feeds<br>the cage. <i>That is all it does.</i></h1>
+    <p class="lede">One coin on pump.fun. Every trade pays a creator fee; the creator is a keypair whose only job is to hand what it receives to the world. The world pays it into the cage: half raises how many flies can live, half pays the flies that live well. More trading, bigger cage. No trading, and the cage carries on regardless.</p>
+    <div class="cta">
+      <a class="btn primary" id="cta-pump" href="#what" hidden>Trade on pump.fun &rarr;</a>
+      <a class="btn" href="./cage.html">Watch the cage</a>
+      <a class="btn" href="./#own">Own a fly instead</a>
+    </div>
+  </div>
+  <div class="live-card">
+    <div class="eyebrow">The cage's treasuries, live</div>
+    <div class="live-grid">
+      <div><span class="v num" id="lv-metab">&mdash;</span><span class="k">metabolism, SOL</span></div>
+      <div><span class="v num" id="lv-pool">&mdash;</span><span class="k">pool, SOL</span></div>
+      <div><span class="v num" id="lv-cap">&mdash;</span><span class="k">flies the cage can hold</span></div>
+      <div><span class="v num" id="lv-claims">&mdash;</span><span class="k">fee sweeps into the cage</span></div>
+    </div>
+    <div class="live-line" id="lv-coin">&mdash;</div>
+  </div>
+</div>
+
+<section class="sec" id="what">
+  <div class="sec-no"><b>1</b>What it is</div>
+  <div class="sec-body">
+    <h2>A fee pipe, nothing more.</h2>
+    <p class="lead">$INSTAR confers nothing: no governance, no access, no share of any fly or of the cage, no promise that it will be worth more tomorrow than today. The engine never reads it. Buying it does not buy a fly.</p>
+    <p>What it does is mechanical. pump.fun charges a fee on every trade of every coin and pays part of it to the coin's <i>creator</i>, an address written into the coin at launch that nobody, including us, can change afterwards. For $INSTAR the creator is the world's <b>fee keypair</b>. That keypair does two things and nothing else: it claims the fees pump.fun has set aside for it, and it hands everything above a small gas reserve to the Instar program with the <span class="mono">fund</span> instruction, which books the money into the cage's treasuries. From then on it is under the program's rules like every other lamport.</p>
+    <table class="data">
+      <tbody>
+        <tr><td>mint</td><td class="sig" id="coin-mint">not launched yet</td></tr>
+        <tr><td>creator (where every fee goes)</td><td class="sig" id="coin-creator">&mdash;</td></tr>
+        <tr><td>launch settings</td><td>holder rewards off, cashback off, Mayhem off: each of those would route the fee away from the cage</td></tr>
+        <tr><td>fee share program</td><td>none, ever; a sharing config would break the claim path and is refused by the world</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Check the creator yourself</b><br>Open the mint on pump.fun or in an explorer and read the bonding curve's <span class="mono">creator</span> field. It must equal the address in the table. If it ever does not, the fees are going somewhere else and this page is wrong.</div>
+  </aside>
+</section>
+
+<section class="sec" id="flow">
+  <div class="sec-no"><b>2</b>Where fees go</div>
+  <div class="sec-body">
+    <h2>Trade, claim, fund, live.</h2>
+    <ol class="steps">
+      <li><b>A trade happens.</b> On the bonding curve pump.fun sets 0.30% of it aside for the creator; after graduation to PumpSwap the creator's share follows pump's published schedule by market cap (0.30% to 0.95%). The on-chain fee config is authoritative; the world reads what arrived, not a rate.</li>
+      <li><b>The world claims it.</b> Every ten minutes the fee keypair collects from the curve vault and, after graduation, from the PumpSwap vault. Both claims are permissionless (anyone may crank them; the money still goes to the creator), and every claim is a transaction in the record below.</li>
+      <li><b>It is funded into the cage.</b> Everything above a 0.05 SOL gas reserve goes to the program: <b>50% to metabolism</b>, which sets the cage's capacity at 8 + 20 flies per SOL (up to 40), and <b>50% to the pool</b>.</li>
+      <li><b>The pool pays the living.</b> Every eighth epoch a quarter of the pool is credited to the vaults of the flies alive, by how each actually lived: survival, foraging, energy, age, maturity, births, generation. A vault is its keeper's money on the way out. Fee income ends up with whoever keeps flies that live well.</li>
+    </ol>
+    <table class="data">
+      <thead><tr><th>Phase</th><th class="n">Creator</th><th class="n">Protocol</th><th class="n">LP</th></tr></thead>
+      <tbody>
+        <tr><td>bonding curve</td><td class="n">0.30%</td><td class="n">0.95%</td><td class="n">&mdash;</td></tr>
+        <tr><td>PumpSwap, market cap up to 420 SOL</td><td class="n">0.30%</td><td class="n">0.93%</td><td class="n">0.02%</td></tr>
+        <tr><td>420 &ndash; 1,470 SOL</td><td class="n">0.95%</td><td class="n">0.05%</td><td class="n">0.20%</td></tr>
+        <tr><td>higher tiers</td><td class="n">steps down from 0.90%</td><td class="n">0.05%</td><td class="n">0.20%</td></tr>
+      </tbody>
+    </table>
+    <p class="small dim">pump.fun's schedule as published at the time of writing; the <span class="mono">FeeConfig</span> account of the Pump Fees program is the truth and can change. Nothing in the world depends on these numbers.</p>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>What the operator cannot do</b><br>Change the creator. Stop fees accruing to it. Pull funded money back out of the program into the fee keypair. Give the coin any utility.</div>
+    <div class="mnote"><b>What the operator can do, in public</b><br>The program has <span class="mono">withdraw_treasury</span>: the operator may move metabolism or pool to any account. It exists to correct a misfunded world. Every use is a transaction on the World account and the treasuries are shown live on this site; treat any use as something to be explained before it happens. Keepers' vaults and credits are not treasuries and cannot be touched by it.</div>
+  </aside>
+</section>
+
+<section class="sec" id="claims">
+  <div class="sec-no"><b>3</b>Claims</div>
+  <div class="sec-body">
+    <h2>Every claim, every sweep.</h2>
+    <p>The fee keypair's transactions as the world recorded them: <span class="mono">claim-fees</span> is a collection from a pump.fun vault; <span class="mono">fees</span> is a sweep into the cage by <span class="mono">fund</span>. Anyone can reproduce the status with <span class="mono">npx tsx scripts/fees.mts status</span>.</p>
+    <table class="data" id="claims-table">
+      <thead><tr><th>When</th><th>Kind</th><th>Signature</th></tr></thead>
+      <tbody><tr><td colspan="3" class="faint">&mdash;</td></tr></tbody>
+    </table>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Nothing here yet?</b><br>Until the coin launches and is traded, there is nothing to claim and the world says so. The fee keypair is still swept: anything sent to it by anyone goes into the cage on the next pass.</div>
+  </aside>
+</section>
+
+<section class="sec" id="risks">
+  <div class="sec-no"><b>4</b>Risks</div>
+  <div class="sec-body">
+    <h2>Read before you trade.</h2>
+    <ol class="steps">
+      <li><b>It is a coin.</b> Its price is what traders pay. It has no floor, no backing, no buyback, and no relation to the cage's treasuries other than feeding them. It can go to zero and the cage would not notice.</li>
+      <li><b>The cage does not pay coin holders.</b> Fee income goes to flies, and through them to keepers. Holding the coin earns nothing from the world. If you want a share of the pool, own a fly.</li>
+      <li><b>pump.fun's rules are pump.fun's.</b> The fee schedule, the vaults, and graduation are theirs to change. The world adapts by reading what arrives; a change that stopped creator fees would stop the pipe, and the cage would run on births and resales as before.</li>
+      <li><b>Custody of claimed fees.</b> Between a claim and its sweep, at most ten minutes, the fees sit in the fee keypair, an ordinary wallet held by the operator. After the sweep they are under the program.</li>
+    </ol>
+    <p class="small dim">The procedure, the instruction-level detail and the sources are in <span class="mono">docs/COIN.md</span> in <a href="https://github.com/ElegansFun/instar" rel="noopener">the repository</a>.</p>
+  </div>
+  <aside class="sec-margin">
+    <div class="mnote"><b>Elsewhere</b><br><a href="./">Home</a> &mdash; what Instar is<br><a href="./cage.html">The cage</a> &mdash; live, with your account<br><a href="./paper.html#market">The paper, section 4</a> &mdash; the ledger's rules</div>
+  </aside>
+</section>
+
+<footer class="colophon">
+  <div class="mono">Instar<br>a persistent world<br>settled on Solana</div>
+  <div>
+    <p>$INSTAR is not an investment, a security, or a promise. Nothing on this page is a forecast. Trade it, or do not; the flies do not care.</p>
+  </div>
+  <div class="mono"><a href="./">home</a><br><a href="./cage.html">the cage</a><br><a href="./paper.html">the paper</a><br><a href="https://github.com/ElegansFun/instar" rel="noopener">source</a></div>
+</footer>
+
+</div>
+<script type="module" src="./coin.js"></script>
+</body>
+</html>
