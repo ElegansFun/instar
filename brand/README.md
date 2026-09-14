@@ -31,6 +31,34 @@ browser at device scale 1 and screenshot every `[data-asset]` element at its
 box; each is laid out at the exact pixel size in its name. Copy `og-1200x630.png`
 to `site/og.png` and the three icons into `site/`.
 
+## Social (`social/`)
+
+Cards, an article, the pinned video and the post texts for X, all reading
+their numbers from the world rather than from prose.
+
+| file | use |
+|---|---|
+| `../social.mjs` | writes `social/compose.html`: 1600×900 cards, every number from `.config.json`, `.journal.json` and `site/measurements.json` |
+| `social/.config.json`, `social/.journal.json` | `/api/config` and `/api/journal` fetched from the live host; not committed, refetch before regenerating |
+| `social/*.png` | one screenshot per `[data-asset]` card; `live-*.png` are screenshots of the site itself |
+| `social/posts.json` | the pinned post and the thread, each with its media file |
+| `social/article.md` | the long form; `[image: x.png]` marks where each card goes |
+| `social/narration.json`, `narration.ps1` | six narration lines; the script speaks them with Windows SAPI into `nar-N.wav` (not committed) |
+| `social/captions.html` | six 1600×150 lower-third captions, screenshot to `cap-N.png` |
+| `social/tour.webm` | screen recording of the site (not committed) |
+| `social/pinned.mp4` | 1280×720, 30 fps, 72 s, h264 + aac: the tour cut into six segments, one caption and one narration each, closing on the hero card |
+
+```
+curl -s https://instarcage.com/api/config  > brand/social/.config.json
+curl -s https://instarcage.com/api/journal > brand/social/.journal.json
+node brand/social.mjs
+powershell -File brand/social/narration.ps1
+```
+
+Then screenshot `compose.html` and `captions.html` the same way as above.
+The cards say what the world says at the moment they are made: regenerate
+them, not the numbers, when the world moves.
+
 ## Palette
 
 | name | hex | where |
