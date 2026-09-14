@@ -112,7 +112,7 @@ the world you deploy.
 
 ```
 INSTAR_CLUSTER=mainnet-beta INSTAR_DEPLOYER_KEYPAIR=.keys/mainnet/operator.json \
-INSTAR_RECOVERY=<recovery pubkey> PUBLIC_URL=https://your.domain npm run program:deploy
+INSTAR_RECOVERY=<recovery pubkey> PUBLIC_URL=https://instarcage.com npm run program:deploy
 ```
 
 One run: it deploys the real-timer artifact (the script refuses a short-timers
