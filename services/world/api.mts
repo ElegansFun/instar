@@ -520,9 +520,11 @@ function handler(ctx: WorldContext) {
     res.setHeader("content-type", MIME[ext] ?? "application/octet-stream");
     res.setHeader("cache-control", isData ? "public, max-age=3600" : "no-cache");
     res.setHeader("x-frame-options", "DENY");
-    res.writeHead(200);
     // link previews need absolute URLs and the origin is only known here
-    res.end(ext === ".html" ? fs.readFileSync(full, "utf8").replaceAll("{{PUBLIC_URL}}", ctx.publicUrl) : fs.readFileSync(full));
+    const body = ext === ".html" ? Buffer.from(fs.readFileSync(full, "utf8").replaceAll("{{PUBLIC_URL}}", ctx.publicUrl)) : fs.readFileSync(full);
+    res.setHeader("content-length", String(body.length));
+    res.writeHead(200);
+    res.end(body);
     return true;
   }
 
@@ -536,6 +538,11 @@ function handler(ctx: WorldContext) {
       res.setHeader("vary", "origin");
     }
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+    // link previewers and monitors ask HEAD before GET; Node drops the body itself
+    if (req.method === "HEAD") {
+      if (!url.startsWith("/api/") && serveStatic(url, res)) return;
+      res.writeHead(404); res.end(); return;
+    }
     const json = (status: number, body: unknown) => {
       res.setHeader("content-type", "application/json");
       res.writeHead(status);
