@@ -189,7 +189,7 @@
    "image": "verify.png"
   },
   {
-   "table": "|  | on devnet |\n| --- | --- |\n| program | [EL4v62JjCYReN8nTw8makyvHAC61CQYwsPYkQt5PLB3W](https://explorer.solana.com/address/EL4v62JjCYReN8nTw8makyvHAC61CQYwsPYkQt5PLB3W?cluster=devnet) |\n| world account | [2xXNq1G2DvCtufEiuwuXnDD9ruXtbDYpEW21GJvcN2Sx](https://explorer.solana.com/address/2xXNq1G2DvCtufEiuwuXnDD9ruXtbDYpEW21GJvcN2Sx?cluster=devnet) |\n| collection | [FN8w2o9d8Jopc95rM473mFNSLVDw4scriVvbJMAh2Gx7](https://explorer.solana.com/address/FN8w2o9d8Jopc95rM473mFNSLVDw4scriVvbJMAh2Gx7?cluster=devnet) |\n| latest epoch posted | epoch 230 at tick 552,000, hash 948d5aa70315f996 ([tx](https://explorer.solana.com/tx/3wGFt2ueqtjPgHdCiUAmYv7xkGN5cQRDsS1pvkm3YRVGGAHrfrqMmqjqGgKNx3dVX1BiPHco3ACGEPx5HbGtM3aK?cluster=devnet)) |\n| verifier | VERIFIED, epoch 78, hash 508c9953710a6479; 3 distinct epochs verified |\n| source commit running | [982f5346819d](https://github.com/InstarCage/instar/commit/982f5346819dfc478e72eccce84ff57b70ca23d7) |\n| engine sha-256 | 162ea0a4b3d022277db5ec019c42639223766c4b8ab16d5f3f075ac8e75d3b6a |\n| census Merkle root | a7999c12b33dd7a5681541b7b9025c165b236b40cb76117885d5663e839b196e |\n| right now | 8 alive of capacity 8; 270 born, 262 died; metabolism 0.0484 SOL, pool 0.0148 SOL |"
+   "table": "|  | on mainnet-beta |\n| --- | --- |\n| program | [A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu](https://explorer.solana.com/address/A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu) |\n| world account | [HqZmXHmYBdQCUYWj8nQt5ivv5qfgCTvTFdMe9iGoVskH](https://explorer.solana.com/address/HqZmXHmYBdQCUYWj8nQt5ivv5qfgCTvTFdMe9iGoVskH) |\n| collection | [AaF9bpn4dXiE23cvaQh4dHZ2TX7rG9eCYQocykXgLgCW](https://explorer.solana.com/address/AaF9bpn4dXiE23cvaQh4dHZ2TX7rG9eCYQocykXgLgCW) |\n| latest epoch posted | epoch 1 at tick 2,400, hash c77dfab9ecf728b2 ([tx](https://explorer.solana.com/tx/aNw1G5zygbsPJhmf2gEEouqKPWFqzD6uYwcbojiLKeg8WiFgsNAMBzs79K1MWm5tRFBRPk7skYNisWPAPZ3L75n)) |\n| verifier | VERIFIED, epoch 1, hash c77dfab9ecf728b2; 1 distinct epochs verified |\n| source commit running | [61013082c253](https://github.com/InstarCage/instar/commit/61013082c2534f53635b247f870957f0f8c75b5a) |\n| engine sha-256 | 162ea0a4b3d022277db5ec019c42639223766c4b8ab16d5f3f075ac8e75d3b6a |\n| census Merkle root | a7999c12b33dd7a5681541b7b9025c165b236b40cb76117885d5663e839b196e |\n| right now | 5 alive of capacity 8; 8 born, 3 died; metabolism 0.0000 SOL, pool 0.0000 SOL |"
   },
   {
    "html": "<p>Every 2,400 ticks the engine hashes the whole world: population, positions, poses, genomes, and the state of every neuron it touched (FNV-1a, 64 bit). The operator posts that hash to the World account on Solana. Anyone can fetch the world's snapshot, replay the same ticks with the same engine on their own machine, hash the result, and read the account back:</p>"
@@ -258,7 +258,7 @@
    "divider": true
   },
   {
-   "html": "<p><i>Drosophila melanogaster · Janelia MaleCNS v1.0 (Berg et al. 2026, CC BY 4.0) · Solana devnet.</i> Numbers on this page were read from the world at tick 836,114.</p>"
+   "html": "<p><i>Drosophila melanogaster · Janelia MaleCNS v1.0 (Berg et al. 2026, CC BY 4.0) · Solana mainnet-beta.</i> Numbers on this page were read from the world at tick 2,787.</p>"
   }
  ]
 }
