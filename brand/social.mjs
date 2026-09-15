@@ -89,6 +89,10 @@ const cards = [
 
   // the X article's cover, 5:2 as X asks
   card("cover", `<div class="split"><div>${head("A persistent world, settled on Solana", "A cage of flies,<br>each driven by every neuron<br>of a <i>complete nervous system.</i>")}<p class="lede">166,700 neurons. 6.2 million connections. Every fly an NFT. Every epoch hashed to Solana.</p></div><div class="art">${plate()}</div></div>`, "cover"),
+
+  // the coin launch: the whole flow of a fee, and every address a reader
+  // would want to look up, on one card
+  card("launch", `${head("$INSTAR is live", "A coin whose only job is to feed the cage.")}<div class="cols two"><div><div class="steps"><div><b>01 Trade</b>every trade of $INSTAR on pump.fun pays a creator fee</div><div><b>02 Claim</b>the world claims it into the fee keypair every ten minutes, permissionlessly</div><div><b>03 Fund</b>everything above a small gas reserve goes into the World account: half metabolism, half pool</div><div><b>04 Cage</b>metabolism sets how many flies can live (8 + 20 per SOL, up to 40); the pool pays the living flies every eighth epoch</div></div><p class="note">No governance, no access, no share of any fly. The operator cannot pull funded money back out. Every claim and every fund is a public transaction.</p></div><div>${table([["coin", "$INSTAR, pump.fun"], ["creator (fee keypair)", cfg.coin && cfg.coin.creator ? cfg.coin.creator : "—"], ["program", journal.programId], ["World account", journal.worldPda], ["collection", cfg.collection || "—"], ["cluster", journal.cluster], ["right now", `${alive} flies alive of ${journal.capacity}; ${births} born; ${epochs.length} epochs posted, ${v ? (v.epochs || []).length : 0} verified`]])}</div></div>`, "dense"),
 ];
 
 const css = `
