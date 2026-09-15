@@ -1,0 +1,16 @@
+{
+  "posts": [
+    {
+      "text": "Verify Instar in five minutes, no trust needed:\n\ngit clone github.com/InstarCage/instar && npm install\nnpm run verify:epoch -- --world https://instarcage.com\n\nIt downloads the world's snapshot, replays the latest epoch with the same engine (~1.5 GB, about a minute) and reads the World account on Solana. Prints VERIFIED or MISMATCH. Latest: VERIFIED at epoch 78, 3 distinct epochs checked.",
+      "media": "verify.png"
+    },
+    {
+      "text": "Right now on devnet, read from the world's journal: 9 flies alive of capacity 9, 416 born on chain, 407 died and burned, 200 epochs posted (latest 354 at tick 849,600). The median fly so far lived 24 minutes.\n\nNo number here is typed in; the page reads the same journal you can fetch at /api/journal.",
+      "media": "now.png"
+    },
+    {
+      "text": "Whose work this stands on: Berg et al. 2026, Janelia FlyEM, the complete connectome of a male Drosophila central nervous system (MaleCNS v1.0, CC BY 4.0). Twenty years of electron microscopy and proofreading.\n\nThe census Instar loads is a byte-verifiable conversion of their published data, Merkle-rooted so anyone can check it was not altered. The connectome belongs to its authors; nothing here is their endorsement.",
+      "media": "licence.png"
+    }
+  ]
+}

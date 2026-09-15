@@ -47,5 +47,8 @@
     "esbuild@0.28.2": true,
     "bufferutil@4.1.0": true,
     "utf-8-validate@6.0.6": true
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.11.0"
   }
 }
