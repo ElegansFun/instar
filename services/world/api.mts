@@ -528,18 +528,19 @@ function handler(ctx: WorldContext) {
         // a Core transfer signed by the custodial owner, exactly what a
         // wallet would send; the program is not involved
         id = parseId(p.id); mine(id);
-        const to = parsePubkey(p.to);
+        const to = parseWallet(p.to);
         if (to.equals(me)) throw new HttpError(400, "that is your own address");
         kind = "transfer"; sig = await keeper.transferAsset(id, to);
       } else if (url === "/api/withdraw") {
         // two withdrawals share this button: pull what the program owes you,
         // then move SOL out of the custodial wallet
+        // the destination is checked before anything moves
+        const dest = p.to !== undefined && p.to !== "" ? parseWallet(p.to) : null;
+        const amount = p.lamports === "max" || p.lamports === undefined ? "max" as const : parseLamports(p.lamports);
         const owed = await ctx.chain.creditOf(me);
         if (owed > 0n) { sig = await keeper.withdraw(); ctx.store.logTx("claim", sig, true); }
-        if (p.to !== undefined && p.to !== "") {
-          const to = parsePubkey(p.to);
-          const amount = p.lamports === "max" || p.lamports === undefined ? "max" as const : parseLamports(p.lamports);
-          kind = "payout"; sig = await keeper.sendSol(to, amount);
+        if (dest) {
+          kind = "payout"; sig = await keeper.sendSol(dest, amount);
         } else if (owed === 0n) throw new HttpError(400, "nothing to withdraw");
         else kind = "claim";
       } else {
