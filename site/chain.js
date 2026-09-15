@@ -222,7 +222,7 @@ export class Program {
       try { return await this.connection[method](...args); }
       catch (e) {
         const text = String(e && e.message || e);
-        if (i + 1 >= this.endpoints.length || !/failed to fetch|fetch failed|networkerror|load failed|network request failed|\b(429|502|503|504)\b/i.test(text)) throw e;
+        if (i + 1 >= this.endpoints.length || !/failed to fetch|fetch failed|networkerror|load failed|network request failed|access forbidden|\b(403|429|502|503|504)\b/i.test(text)) throw e;
         this.endpoints.push(this.endpoints.shift());
         this.connection = new (w3().Connection)(this.endpoints[0], "confirmed");
       }

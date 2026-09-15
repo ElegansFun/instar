@@ -148,6 +148,7 @@ volume (never bake them into the image):
 |---|---|
 | `INSTAR_CLUSTER` | `mainnet-beta` |
 | `INSTAR_RPC` | a paid RPC endpoint; the public one rate-limits |
+| `INSTAR_PUBLIC_RPC` | an RPC URL the site hands to browsers, for wallet mode and the in-page verifier: a provider key restricted to the `PUBLIC_URL` origin. Mainnet's public endpoint refuses browser origins with 403, so without this those two features cannot read the chain |
 | `INSTAR_OPERATOR_KEYPAIR` | path to the operator keypair file mounted into the container. Hosts that only pass secrets as variables (Railway) set `INSTAR_OPERATOR_KEYPAIR_JSON` to the 64-number array instead; the world writes it once to `DATA_DIR/keys/operator.json` (mode 0600) and reads the file from then on |
 | `INSTAR_MASTER_KEY` | 32 random bytes as hex; encrypts custodial wallets at rest. REQUIRED on mainnet-beta: the world refuses to start without it (on localnet/devnet it defaults to a key derived from the operator key, which would lock every keeper out if the operator key were rotated or lost). Keep it separately from the operator key |
 | `DATA_DIR` | a persistent volume (`/data`); journal, snapshot (`snapshot.bin.gz`, ~150 MB, rewritten every five minutes), accounts and sessions live here |

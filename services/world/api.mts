@@ -35,6 +35,8 @@ export type WorldContext = {
   coin: { mint: string | null; creator: string | null };
   build: { commit: string | null; dirty: boolean; at: string | null; wasmSha256: string; censusRoot: string };
   publicUrl: string;
+  /// INSTAR_PUBLIC_RPC: the endpoint the site hands to browsers
+  publicRpc: string;
   economy: { offerBase: string; offerPerGen: string; founderPremium: number; rewardEveryEpochs: number; poolPayoutBps: number; sweepIntervalMs: number; sweepPoolBps: number; gasReserve: string };
   corsOrigin: string;
   siteDir: string;
@@ -602,9 +604,12 @@ function handler(ctx: WorldContext) {
             publicUrl: ctx.publicUrl, coin: ctx.coin, build: ctx.build, economy: ctx.economy,
             worldPda: ctx.chain.worldPda.toBase58(), collection: ctx.world()?.collection.toBase58() ?? null,
             explorer: "https://explorer.solana.com", explorerQuery: ctx.chain.explorerQuery,
-            // The PUBLIC endpoint, never the configured one: that may carry a
-            // provider key, and this payload is served to every visitor.
-            rpc: PUBLIC_RPC[ctx.cluster],
+            // Never the configured endpoint: that may carry a provider key,
+            // and this payload is served to every visitor. INSTAR_PUBLIC_RPC
+            // is one meant for browsers (a key restricted to this origin);
+            // without it the cluster's public endpoint, which on mainnet
+            // refuses browser origins, so wallet mode needs the former.
+            rpc: ctx.publicRpc || PUBLIC_RPC[ctx.cluster],
             tickrate: ctx.store.journal.tickrate, epochInterval: ctx.store.journal.epochInterval,
             // where a mirror reads the epoch commitment in the raw World
             // account, so VERIFIED means the chain agrees, not this server

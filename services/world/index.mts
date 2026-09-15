@@ -847,7 +847,7 @@ async function buildWorld() {
   await refreshChain().catch(e => log("initial chain read: " + String(e?.message ?? e).slice(0, 120)));
 
   return {
-    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin, build,
+    cluster: CLUSTER, googleClientId: GOOGLE_CLIENT_ID, publicUrl: PUBLIC_URL, coin, build, publicRpc: process.env.INSTAR_PUBLIC_RPC ?? "",
     // the rules the site quotes, so no rate is typed into a page
     economy: { offerBase: OFFER_BASE.toString(), offerPerGen: OFFER_PER_GEN.toString(), founderPremium: Number(FOUNDER_PREMIUM), rewardEveryEpochs: REWARD_EVERY_EPOCHS, poolPayoutBps: Number(POOL_PAYOUT_BPS), sweepIntervalMs: SWEEP_INTERVAL_MS, sweepPoolBps: SWEEP_POOL_BPS, gasReserve: GAS_RESERVE.toString() },
     corsOrigin: process.env.INSTAR_CORS_ORIGIN ?? "", siteDir: SITE_DIR, rootDir: ROOT, dataDir: DATA_DIR, adminToken: ADMIN_TOKEN,
