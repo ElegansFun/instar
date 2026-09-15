@@ -11,7 +11,7 @@ import { API } from "./engine.js";
 
 // The one program this page signs for. scripts/preflight.mts asserts it
 // equals the IDL's address, so a key rotation cannot ship a mismatched site.
-export const PROGRAM_ID = "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM";
+export const PROGRAM_ID = "A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu";
 export const MPL_CORE = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
 // Public endpoints tried, in order, after the one the world names.
 const PUBLIC_RPC = {

@@ -23,7 +23,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM");
+declare_id!("A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu");
 
 #[program]
 pub mod instar {

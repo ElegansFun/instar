@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/instar.json`.
  */
 export type Instar = {
-  "address": "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM",
+  "address": "A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu",
   "metadata": {
     "name": "instar",
     "version": "0.1.0",
@@ -284,7 +284,7 @@ export type Instar = {
         {
           "name": "sellerCredit",
           "docs": [
-            "The seller's credit: the keeper who listed the larva."
+            "The seller's credit: the keeper who listed the fly."
           ],
           "writable": true,
           "pda": {
@@ -794,7 +794,7 @@ export type Instar = {
         {
           "name": "collection",
           "docs": [
-            "The Core collection every larva will belong to: a fresh keypair the",
+            "The Core collection every fly will belong to: a fresh keypair the",
             "client generates and signs for, as Core requires of a new account."
           ],
           "writable": true,
@@ -802,7 +802,7 @@ export type Instar = {
         },
         {
           "name": "program",
-          "address": "75rMBkZtwuc3BHrtD2F3Sd7fMgirF2mzA4yfMQW4NLcM"
+          "address": "A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu"
         },
         {
           "name": "programData"
@@ -1196,7 +1196,7 @@ export type Instar = {
         {
           "name": "asset",
           "docs": [
-            "The larva's Core asset: a fresh keypair the client signs for."
+            "The fly's Core asset: a fresh keypair the client signs for."
           ],
           "writable": true,
           "signer": true
@@ -1506,8 +1506,8 @@ export type Instar = {
           "name": "keeperCredit",
           "docs": [
             "The credit of whoever owns the asset at settlement. Present whenever",
-            "the larva has a keeper; a WILD or OFFERED larva is the World PDA's own",
-            "and passes none, as does a larva whose keeper burned the asset. The",
+            "the fly has a keeper; a WILD or OFFERED fly is the World PDA's own",
+            "and passes none, as does a fly whose keeper burned the asset. The",
             "seed is spelled as an indexed byte array so the IDL builder, which can",
             "only describe constants, arguments and account fields, leaves the PDA",
             "undescribed instead of emitting the expression into the IDL."
@@ -1859,12 +1859,12 @@ export type Instar = {
     {
       "code": 6001,
       "name": "notOwner",
-      "msg": "signer is not the owner of the larva's asset"
+      "msg": "signer is not the owner of the fly's asset"
     },
     {
       "code": 6002,
       "name": "wrongStatus",
-      "msg": "the larva or the world is not in the status this action needs"
+      "msg": "the fly or the world is not in the status this action needs"
     },
     {
       "code": 6003,
@@ -1874,7 +1874,7 @@ export type Instar = {
     {
       "code": 6004,
       "name": "notForSale",
-      "msg": "the larva is not for sale"
+      "msg": "the fly is not for sale"
     },
     {
       "code": 6005,
@@ -1924,7 +1924,7 @@ export type Instar = {
     {
       "code": 6014,
       "name": "assetMismatch",
-      "msg": "the asset account is not the larva's asset"
+      "msg": "the asset account is not the fly's asset"
     },
     {
       "code": 6015,
@@ -2019,16 +2019,16 @@ export type Instar = {
           {
             "name": "asset",
             "docs": [
-              "The Metaplex Core asset that is this larva. Its `owner` is the keeper;",
+              "The Metaplex Core asset that is this fly. Its `owner` is the keeper;",
               "the World PDA holds it while WILD or OFFERED. Kept after the burn as the",
-              "record of which asset the larva was."
+              "record of which asset the fly was."
             ],
             "type": "pubkey"
           },
           {
             "name": "listedBy",
             "docs": [
-              "Who listed the larva for resale; default when it is not listed. A",
+              "Who listed the fly for resale; default when it is not listed. A",
               "listing is void once the asset has left that keeper's hands, and",
               "expires LISTING_MAX_AGE after `listed_at`."
             ],
@@ -2041,7 +2041,7 @@ export type Instar = {
           {
             "name": "vault",
             "docs": [
-              "Lamports the larva has earned and holds, backed by the World account."
+              "Lamports the fly has earned and holds, backed by the World account."
             ],
             "type": "u64"
           },
@@ -2145,7 +2145,7 @@ export type Instar = {
           {
             "name": "collection",
             "docs": [
-              "The Metaplex Core collection every larva's asset belongs to. The World",
+              "The Metaplex Core collection every fly's asset belongs to. The World",
               "PDA is its update authority."
             ],
             "type": "pubkey"
@@ -2185,7 +2185,7 @@ export type Instar = {
           {
             "name": "pool",
             "docs": [
-              "Treasury that pays living larvae every epoch."
+              "Treasury that pays living flies every epoch."
             ],
             "type": "u64"
           },
