@@ -42,7 +42,11 @@ const SURFACE_NAME = ["floor", "west wall", "east wall", "north wall", "south wa
     if (seen) {
       const b = $("identity-banner");
       b.hidden = false;
-      setHtml("identity-text", `this world's chain identity changed since your first visit: program ${esc(short(seen.programId, 6))} \u2192 ${esc(short(config.programId, 6))}, collection ${esc(short(seen.collection, 6))} \u2192 ${esc(short(config.collection, 6))}. Do not sign anything unless you expected this.`);
+      // a move between clusters is a rehearsal ending, and says so; the same
+      // cluster naming a different program is the case to distrust
+      setHtml("identity-text", seen.cluster && seen.cluster !== config.cluster
+        ? `this world moved from ${esc(seen.cluster)} to ${esc(config.cluster)} since your last visit: program ${esc(short(seen.programId, 6))} \u2192 ${esc(short(config.programId, 6))}, collection ${esc(short(seen.collection, 6))} \u2192 ${esc(short(config.collection, 6))}. The ${esc(seen.cluster)} world was the rehearsal; this one holds real SOL.`
+        : `this world's chain identity changed since your first visit: program ${esc(short(seen.programId, 6))} \u2192 ${esc(short(config.programId, 6))}, collection ${esc(short(seen.collection, 6))} \u2192 ${esc(short(config.collection, 6))}. Do not sign anything unless you expected this.`);
       $("identity-accept").addEventListener("click", () => { rememberIdentity(config); b.hidden = true; });
     }
   }

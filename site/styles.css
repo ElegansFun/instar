@@ -247,6 +247,8 @@ footer.colophon .mono { font-size: 11px; line-height: 1.7; }
   .split { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
+  .title-block h1 br { display: none; }
+  table.data td.sig { word-break: break-all; }
   body { font-size: 17px; }
   .page { padding: 0 16px 60px; }
   .masthead { grid-template-columns: 1fr; gap: 8px; }
