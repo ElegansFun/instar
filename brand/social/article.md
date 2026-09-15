@@ -136,7 +136,7 @@ $INSTAR will be a pump.fun coin whose creator fees are claimed by the world and 
 
 ## 12. Risks, plainly
 
-Flies die, often within minutes; a purchase can end with nothing but a death settlement. An Instar account is custodial; use your own wallet if you would rather hold the key. Nothing on the site is an investment, and no number on it is a forecast. The world is on Solana devnet today while it is rehearsed end to end; mainnet follows.
+Flies die, often within minutes; a purchase can end with nothing but a death settlement. An Instar account is custodial; use your own wallet if you would rather hold the key. Nothing on the site is an investment, and no number on it is a forecast. The world ran on Solana devnet for its rehearsal and is on mainnet-beta now; every address in section 9 is the live one.
 
 ## 13. The stack, all of it open
 

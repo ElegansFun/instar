@@ -1,0 +1,16 @@
+{
+  "posts": [
+    {
+      "text": "Instar is on Solana mainnet-beta as of tonight.\n\nProgram A42YLDRf1WoVVzrkPpkGnvsKpJiN4oZCjHEvo4iMt6Tu\nWorld HqZmXHmYBdQCUYWj8nQt5ivv5qfgCTvTFdMe9iGoVskH\n\n16 flies born so far, 8 alive, 8 died; 5 epochs posted. Epoch 1 was replayed on a separate machine and matched the chain: VERIFIED.\n\nA newborn is 0.005 SOL + 0.001 per generation. instarcage.com/cage.html",
+      "media": "proof.png"
+    },
+    {
+      "text": "The first mainnet fly changed hands an hour after genesis. #2, generation 0, 0.01 SOL: 60% into its vault, 15% to metabolism, 15% to the pool, and it was minted to the buyer as a Core NFT. Every step is a transaction on the World account. That was our own test purchase; the flow works end to end.",
+      "media": "lifecycle.png"
+    },
+    {
+      "text": "What mainnet changes and what it does not. Changes: the SOL is real, so the risk line is real: flies die, often within minutes. Does not change: the wiring, the engine, the rules, the exits. If we vanish, anyone can wind the world down after 90 days and every keeper reclaims their vault. That was true on devnet and it is true now.",
+      "media": "recovery.png"
+    }
+  ]
+}
